@@ -75,6 +75,7 @@ import tempfile
 import traceback
 from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Any, List, Tuple
+from requests.exceptions import ChunkedEncodingError
 
 # ── third-party (fail fast with clear message) ────────────────────────────────
 try:
@@ -347,7 +348,7 @@ def retry_get(
         except (
             requests.ConnectionError,
             requests.Timeout,
-            requests.ChunkedEncodingError,
+            ChunkedEncodingError,
         ) as e:
             last_exc = e
             log.warning(f"  Network error (attempt {attempt + 1}): {type(e).__name__}: {e}")

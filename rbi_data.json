@@ -1,0 +1,283 @@
+{
+  "_meta": {
+    "schema_version": "1.0.0",
+    "reference_date": "2025-06-30",
+    "last_updated": "2025-06-30T00:00:00+05:30",
+    "source_label": "RBI DBIE · CCIL · NSO · FBIL · NSE",
+    "stale_threshold_days": 7,
+    "notes": "All yields in percent (%). All prices per ₹100 face value. Spreads in basis points (bps)."
+  },
+
+  "audit_log": [
+    {
+      "timestamp": "2025-06-30T00:00:00+05:30",
+      "action": "initial_load",
+      "source": "RBI DBIE / NSO / CCIL",
+      "operator": "manual",
+      "changes": "Baseline data populated from audit-corrected dashboard v1.0",
+      "validation_status": "passed"
+    }
+  ],
+
+  "policy": {
+    "repo_rate": 5.50,
+    "repo_rate_effective_date": "2025-06-06",
+    "repo_rate_source": "RBI MPC Statement dated 06-Jun-2025 (prid=60604)",
+    "repo_rate_change_bps": -50,
+    "repo_rate_prev": 6.00,
+    "fy_label": "FY 2024–25"
+  },
+
+  "risk_free": {
+    "tenor_days": 91,
+    "auction_date": "2025-06-25",
+    "cutoff_price": 98.6280,
+    "implicit_yield": 5.5796,
+    "weighted_average_yield": 5.5730,
+    "source": "RBI DBIE – Auctions of 91-Day Government of India Treasury Bills",
+    "formula": "((100 - price) / price) × (365 / days) × 100",
+    "reconciliation_check": "((100 - 98.6280) / 98.6280) × (365 / 91) × 100 = 5.5796%"
+  },
+
+  "kpi": {
+    "gsec_10y_yield": 6.87,
+    "gsec_10y_label": "Benchmark · GOI 2034 Series",
+    "gsec_10y_delta_bps": -18,
+    "gsec_10y_delta_label": "▼ 18 bps from Apr 2025",
+    "tbill_91d_yield": 5.5796,
+    "tbill_91d_cutoff_price": 98.6280,
+    "tbill_91d_auction_date": "2025-06-25",
+    "yield_spread_10y_91d_bps": 129,
+    "sdl_spread_10y_bps": 52,
+    "sdl_spread_delta_bps": 6,
+    "cpi_may2025": 2.82,
+    "cpi_source": "NSO May-2025 official release",
+    "real_yield_10y": 4.05,
+    "mod_duration_10y": 7.42,
+    "gross_borrowing_fy26_trn": 14.82,
+    "gross_borrowing_fy25_trn": 15.00
+  },
+
+  "yield_curve": {
+    "source": "RBI / CCIL",
+    "tenors": ["91D","182D","364D","2Y","3Y","5Y","7Y","10Y","15Y","20Y","30Y"],
+    "current": {
+      "label": "Jun 2025",
+      "yields": [5.58, 6.59, 6.68, 6.72, 6.74, 6.79, 6.83, 6.87, 6.93, 6.98, 7.05]
+    },
+    "prior_year": {
+      "label": "Jun 2024",
+      "yields": [6.78, 6.82, 6.89, 6.94, 6.98, 7.08, 7.12, 7.19, 7.23, 7.27, 7.34]
+    }
+  },
+
+  "bond_table": {
+    "as_of": "Jun 2025",
+    "source": "CCIL",
+    "bonds": [
+      {
+        "instrument": "GOI 2025 (91D T-Bill)",
+        "tenor": "91 days",
+        "coupon": "Disc.",
+        "ytm": 5.5796,
+        "price": 98.63,
+        "mod_duration": 0.24,
+        "convexity": 0.06,
+        "vs_repo_bps": 8
+      },
+      {
+        "instrument": "GOI 2025 (182D T-Bill)",
+        "tenor": "182 days",
+        "coupon": "Disc.",
+        "ytm": 6.59,
+        "price": 96.85,
+        "mod_duration": 0.48,
+        "convexity": 0.23,
+        "vs_repo_bps": 109
+      },
+      {
+        "instrument": "GOI 2025 (364D T-Bill)",
+        "tenor": "364 days",
+        "coupon": "Disc.",
+        "ytm": 6.68,
+        "price": 93.75,
+        "mod_duration": 0.95,
+        "convexity": 0.91,
+        "vs_repo_bps": 118
+      },
+      {
+        "instrument": "GOI 2027 (2Y G-Sec)",
+        "tenor": "2 years",
+        "coupon": 6.79,
+        "ytm": 6.72,
+        "price": 101.12,
+        "mod_duration": 1.87,
+        "convexity": 3.52,
+        "vs_repo_bps": 122
+      },
+      {
+        "instrument": "GOI 2029 (5Y G-Sec)",
+        "tenor": "5 years",
+        "coupon": 7.18,
+        "ytm": 6.79,
+        "price": 101.74,
+        "mod_duration": 4.31,
+        "convexity": 21.40,
+        "vs_repo_bps": 129
+      },
+      {
+        "instrument": "GOI 2034 (10Y Benchmark)",
+        "tenor": "10 years",
+        "coupon": 7.10,
+        "ytm": 6.87,
+        "price": 101.64,
+        "mod_duration": 7.42,
+        "convexity": 66.18,
+        "vs_repo_bps": 137
+      },
+      {
+        "instrument": "GOI 2039 (15Y G-Sec)",
+        "tenor": "15 years",
+        "coupon": 7.25,
+        "ytm": 6.93,
+        "price": 102.34,
+        "mod_duration": 10.18,
+        "convexity": 121.44,
+        "vs_repo_bps": 143
+      },
+      {
+        "instrument": "GOI 2054 (30Y G-Sec)",
+        "tenor": "30 years",
+        "coupon": 7.46,
+        "ytm": 7.05,
+        "price": 104.55,
+        "mod_duration": 16.72,
+        "convexity": 334.80,
+        "vs_repo_bps": 155
+      }
+    ]
+  },
+
+  "tbill_series": {
+    "source": "RBI DBIE – T-Bill Auction Results",
+    "labels": [
+      "Jan 24","Feb 24","Mar 24","Apr 24","May 24","Jun 24",
+      "Jul 24","Aug 24","Sep 24","Oct 24","Nov 24","Dec 24",
+      "Jan 25","Feb 25","Mar 25","Apr 25","May 25","Jun 25"
+    ],
+    "tbill_91d":  [6.74,6.72,6.76,6.78,6.80,6.82,6.79,6.78,6.76,6.74,6.72,6.70,6.65,6.62,6.40,6.20,5.90,5.58],
+    "tbill_182d": [6.81,6.79,6.83,6.85,6.87,6.89,6.86,6.85,6.83,6.81,6.79,6.77,6.72,6.69,6.65,6.63,6.61,6.59],
+    "tbill_364d": [6.90,6.88,6.92,6.94,6.96,6.98,6.95,6.94,6.92,6.90,6.88,6.86,6.81,6.78,6.74,6.72,6.70,6.68]
+  },
+
+  "devolvement": {
+    "source": "RBI – Primary Dealer Devolvement Reports",
+    "labels": ["91D Q1","91D Q2","91D Q3","91D Q4","182D Q1","182D Q2","182D Q3","182D Q4","364D Q1","364D Q2","364D Q3","364D Q4"],
+    "values": [2.1, 0.8, 1.4, 0.5, 3.2, 1.1, 2.0, 0.9, 4.5, 1.8, 2.8, 1.2]
+  },
+
+  "sdl_spread_series": {
+    "source": "CCIL / RBI – State Development Loan Auctions",
+    "labels": [
+      "Jan 24","Feb 24","Mar 24","Apr 24","May 24","Jun 24",
+      "Jul 24","Aug 24","Sep 24","Oct 24","Nov 24","Dec 24",
+      "Jan 25","Feb 25","Mar 25","Apr 25","May 25","Jun 25"
+    ],
+    "spread_bps": [48,46,44,45,47,48,50,49,51,52,53,54,54,55,52,51,52,52]
+  },
+
+  "annual_returns": {
+    "source": "CCIL / NSE – Bond Index Total Returns",
+    "fy_labels": ["FY21","FY22","FY23","FY24","FY25"],
+    "gsec_10y":  [10.42, 1.88, -3.12, 7.34, 8.65],
+    "sdl_10y":   [10.95, 2.14, -2.88, 7.91, 9.12],
+    "tbill":     [4.12,  4.35,  6.82,  6.94, 6.72]
+  },
+
+  "duration_analytics": {
+    "source": "CCIL / Computed from bond cash flows",
+    "tenors": ["91D","182D","364D","2Y","5Y","10Y","15Y","30Y"],
+    "mod_duration": [0.24, 0.48, 0.95, 1.87, 4.31, 7.42, 10.18, 16.72],
+    "dv01_per_crore": [240, 480, 950, 1870, 4310, 7420, 10180, 16720],
+    "convexity": [0.06, 0.23, 0.91, 3.52, 21.40, 66.18, 121.44, 334.80]
+  },
+
+  "rate_shock": {
+    "source": "Computed: %ΔP = (−Dmod × ΔY + 0.5 × Convexity × ΔY²) × 100",
+    "tenors": ["2Y","5Y","10Y","15Y","30Y"],
+    "scenarios": {
+      "m200": [3.78, 8.84, 15.58, 21.75, 36.78],
+      "m100": [1.89, 4.39,  7.68, 10.68, 17.89],
+      "p100": [-1.85,-4.29,-7.35,-10.18,-16.72],
+      "p200": [-3.66,-8.40,-14.38,-19.68,-31.78]
+    }
+  },
+
+  "historical_yields": {
+    "source": "RBI / CCIL – Monthly Average Secondary Market Yields",
+    "labels": [
+      "Jan 20","Apr 20","Jul 20","Oct 20",
+      "Jan 21","Apr 21","Jul 21","Oct 21",
+      "Jan 22","Apr 22","Jul 22","Oct 22",
+      "Jan 23","Apr 23","Jul 23","Oct 23",
+      "Jan 24","Apr 24","Jul 24","Oct 24",
+      "Jan 25","Apr 25","Jun 25"
+    ],
+    "gsec_10y": [6.57,6.12,5.88,5.95,5.94,6.10,6.24,6.35,6.58,7.12,7.45,7.42,7.38,7.05,7.18,7.32,7.25,7.19,7.12,7.08,7.02,6.98,6.87],
+    "gsec_5y":  [6.22,5.79,5.52,5.61,5.60,5.78,5.91,6.04,6.28,6.85,7.18,7.14,7.10,6.78,6.91,7.05,6.98,6.92,6.85,6.81,6.75,6.71,6.79],
+    "gsec_2y":  [5.98,5.45,5.14,5.26,5.25,5.42,5.56,5.68,5.92,6.44,6.82,6.78,6.74,6.42,6.55,6.69,6.62,6.56,6.49,6.61,6.65,6.68,6.72],
+    "spread_2y_10y_bps": [59,67,74,69,69,68,68,67,66,68,63,64,64,63,63,63,63,63,63,47,37,30,15]
+  },
+
+  "data_sources": [
+    {
+      "id": "rbi_main",
+      "name": "Reserve Bank of India",
+      "url": "https://www.rbi.org.in",
+      "description": "Primary source for monetary policy decisions, auction notifications, and press releases",
+      "data_types": ["repo_rate", "policy_decisions", "t_bill_auction_results"]
+    },
+    {
+      "id": "rbi_dbie",
+      "name": "RBI DBIE",
+      "url": "https://data.rbi.org.in/DBIE/",
+      "description": "RBI Database on Indian Economy — 91D/182D/364D T-Bill auction cut-off yields and weighted average yields",
+      "data_types": ["tbill_auction_results", "risk_free_rate", "yield_series"]
+    },
+    {
+      "id": "ccil",
+      "name": "CCIL",
+      "url": "https://www.ccilindia.com",
+      "description": "Clearing Corporation of India — secondary market G-Sec & SDL prices, yield curve, and trade data",
+      "data_types": ["gsec_yields", "sdl_spreads", "bond_prices", "yield_curve"]
+    },
+    {
+      "id": "fbil",
+      "name": "FBIL",
+      "url": "https://www.fbil.org.in",
+      "description": "Financial Benchmarks India — approved benchmark administrator for FBIL-ZCYC and overnight rates",
+      "data_types": ["zcyc", "overnight_mibor", "reference_rates"]
+    },
+    {
+      "id": "nse",
+      "name": "NSE India",
+      "url": "https://www.nseindia.com",
+      "description": "National Stock Exchange — exchange-listed bond prices and indices",
+      "data_types": ["bond_index_returns", "listed_bond_prices"]
+    },
+    {
+      "id": "bse",
+      "name": "BSE India",
+      "url": "https://www.bseindia.com",
+      "description": "Bombay Stock Exchange — bond prices and debt market data",
+      "data_types": ["bond_prices", "debt_market_data"]
+    },
+    {
+      "id": "nso",
+      "name": "NSO / MoSPI",
+      "url": "https://mospi.gov.in",
+      "description": "National Statistical Office — official CPI inflation releases",
+      "data_types": ["cpi_inflation"]
+    }
+  ]
+}

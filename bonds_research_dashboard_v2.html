@@ -1,0 +1,1367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Bonds Research Dashboard — Javvaji Venkatesh</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;1,300;1,400&family=DM+Sans:wght@300;400;500&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+:root {
+  --cream:       #f7f5f0;
+  --ink:         #1a1816;
+  --ink-soft:    #6b6560;
+  --ink-faint:   #c4bfb8;
+  --accent:      #b8924a;
+  --accent-soft: #f0e8d8;
+  --accent-dim:  rgba(184,146,74,0.12);
+  --white:       #ffffff;
+  --serif:       'Cormorant Garamond', Georgia, serif;
+  --sans:        'DM Sans', sans-serif;
+  --mono:        'Inter', system-ui, sans-serif;
+  --green:       #2d7a4f;
+  --green-soft:  #eaf4ee;
+  --red:         #b34a4a;
+  --red-soft:    #faeaea;
+  --section-gap: 5rem;
+  --max:         1200px;
+  --card-radius: 2px;
+}
+
+html { scroll-behavior: smooth; scroll-padding-top: 5rem; font-size: 16px; }
+body {
+  background: var(--cream);
+  color: var(--ink);
+  font-family: var(--sans);
+  font-weight: 300;
+  line-height: 1.7;
+  overflow-x: hidden;
+}
+
+/* ── TOPBAR ── */
+.topbar {
+  position: sticky; top: 0; z-index: 100;
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.2rem 3rem;
+  background: rgba(247,245,240,0.93);
+  backdrop-filter: blur(10px);
+  border-bottom: 1px solid var(--ink-faint);
+}
+.topbar-brand { display: flex; flex-direction: column; gap: 0.15rem; }
+.topbar-title {
+  font-family: var(--sans); font-size: 0.78rem; font-weight: 400;
+  letter-spacing: 0.18em; text-transform: uppercase; color: var(--ink);
+}
+.topbar-sub { font-size: 0.68rem; letter-spacing: 0.08em; color: var(--ink-soft); }
+.topbar-meta { display: flex; align-items: center; gap: 1.5rem; }
+.topbar-badge {
+  font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.28rem 0.75rem;
+  border: 1px solid var(--ink-faint); border-radius: 2px;
+  color: var(--ink-soft); background: transparent;
+}
+.topbar-badge.gold { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.topbar-date { font-size: 0.68rem; letter-spacing: 0.06em; color: var(--ink-soft); font-family: var(--mono); }
+
+/* ── LAYOUT ── */
+.page { max-width: var(--max); margin: 0 auto; padding: 3rem 3rem 5rem; }
+
+/* ── SECTION HEADER ── */
+.sec-label {
+  font-size: 0.7rem; letter-spacing: 0.2em; text-transform: uppercase;
+  color: var(--accent); margin-bottom: 0.6rem;
+  display: flex; align-items: center; gap: 0.75rem;
+}
+.sec-label::before { content: ''; display: block; width: 1.5rem; height: 1px; background: var(--accent); }
+.sec-hd {
+  margin-bottom: 2rem; margin-top: 3.5rem; padding-bottom: 1.25rem;
+  border-bottom: 1px solid var(--ink-faint);
+}
+.sec-hd:first-child { margin-top: 0; }
+.sec-hd h2 {
+  font-family: var(--serif);
+  font-size: clamp(1.6rem, 3vw, 2.4rem);
+  font-weight: 300; line-height: 1.1; letter-spacing: -0.01em;
+  color: var(--ink); margin-bottom: 0;
+}
+.sec-hd h2 em { font-style: italic; color: var(--accent); }
+.sec-hd-row { display: flex; justify-content: space-between; align-items: flex-end; }
+.sec-hd-meta {
+  font-size: 0.72rem; letter-spacing: 0.06em;
+  color: var(--ink-faint); font-family: var(--mono);
+  padding-bottom: 0.15rem;
+}
+
+/* ── KPI GRID ── */
+.kpi-grid {
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 1rem; margin-bottom: 0.5rem;
+}
+.kpi-card {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius);
+  padding: 1.5rem 1.4rem;
+  position: relative; overflow: hidden;
+  transition: border-color 0.2s, transform 0.25s, box-shadow 0.25s;
+}
+.kpi-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: var(--accent);
+}
+.kpi-card:hover {
+  border-color: var(--accent); transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(26,24,22,0.07);
+}
+.kpi-label { font-size: 0.65rem; letter-spacing: 0.14em; text-transform: uppercase; color: var(--ink-soft); margin-bottom: 0.6rem; }
+.kpi-value { font-family: var(--mono); font-size: 1.9rem; font-weight: 300; color: var(--ink); line-height: 1; margin-bottom: 0.45rem; letter-spacing: -0.02em; }
+.kpi-value.accent { color: var(--accent); }
+.kpi-value.green  { color: var(--green); }
+.kpi-value.red    { color: var(--red); }
+.kpi-sub { font-size: 0.68rem; letter-spacing: 0.04em; color: var(--ink-faint); line-height: 1.5; }
+.kpi-delta { display: inline-flex; align-items: center; gap: 0.25rem; font-size: 0.65rem; letter-spacing: 0.06em; margin-top: 0.4rem; font-family: var(--mono); }
+.kpi-delta.up   { color: var(--green); }
+.kpi-delta.down { color: var(--red); }
+
+/* ── CHART CARDS ── */
+.chart-grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.chart-grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.chart-grid-1 { display: grid; grid-template-columns: 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.chart-card {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius); padding: 1.5rem;
+  transition: border-color 0.2s, box-shadow 0.25s;
+}
+.chart-card:hover { border-color: var(--accent-soft); box-shadow: 0 8px 24px rgba(26,24,22,0.05); }
+.chart-hd { margin-bottom: 1.25rem; }
+.chart-hd h3 { font-family: var(--serif); font-size: 1.2rem; font-weight: 300; color: var(--ink); margin-bottom: 0.2rem; }
+.chart-hd p { font-size: 0.72rem; letter-spacing: 0.04em; color: var(--ink-soft); }
+.chart-wrap { position: relative; }
+
+/* ── TABLE ── */
+.tbl-card {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius); overflow: hidden; margin-bottom: 1.25rem;
+}
+.tbl-hd {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 1.1rem 1.5rem; border-bottom: 1px solid var(--ink-faint);
+}
+.tbl-hd h3 { font-family: var(--serif); font-size: 1.1rem; font-weight: 300; color: var(--ink); }
+.tbl-hd span { font-size: 0.65rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-faint); }
+table { width: 100%; border-collapse: collapse; }
+thead tr { background: rgba(184,146,74,0.05); }
+th { padding: 0.7rem 1.25rem; text-align: right; font-size: 0.62rem; letter-spacing: 0.12em; text-transform: uppercase; font-weight: 400; color: var(--ink-soft); border-bottom: 1px solid var(--ink-faint); }
+th:first-child { text-align: left; }
+td { padding: 0.65rem 1.25rem; text-align: right; font-family: var(--mono); font-size: 0.78rem; color: var(--ink); border-bottom: 1px solid rgba(196,191,184,0.3); }
+td:first-child { font-family: var(--sans); font-weight: 400; text-align: left; font-size: 0.82rem; }
+tr:last-child td { border-bottom: none; }
+tr:hover td { background: rgba(184,146,74,0.03); }
+.pos { color: var(--green); }
+.neg { color: var(--red); }
+.neu { color: var(--ink-faint); }
+
+/* ── TABS ── */
+.tabs { display: flex; gap: 0.25rem; margin-bottom: 1.25rem; flex-wrap: wrap; }
+.tab {
+  font-size: 0.68rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.4rem 1rem; border-radius: 2px;
+  border: 1px solid var(--ink-faint); cursor: pointer;
+  color: var(--ink-soft); background: transparent;
+  font-family: var(--sans); transition: all 0.18s;
+}
+.tab:hover { border-color: var(--accent); color: var(--accent); }
+.tab.active { background: var(--accent); color: var(--white); border-color: var(--accent); }
+
+/* ── LEGEND ── */
+.legend { display: flex; gap: 1.5rem; flex-wrap: wrap; margin-top: 0.75rem; }
+.legend-item { display: flex; align-items: center; gap: 0.4rem; font-size: 0.7rem; color: var(--ink-soft); }
+.legend-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; }
+
+/* ── FINDINGS GRID ── */
+.findings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1.25rem; margin-bottom: 1.25rem; }
+.finding-card {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius); padding: 1.75rem;
+  transition: border-color 0.2s, transform 0.25s, box-shadow 0.25s;
+}
+.finding-card:hover { border-color: var(--accent); transform: translateY(-3px); box-shadow: 0 12px 28px rgba(26,24,22,0.07); }
+.finding-icon { font-size: 1.5rem; margin-bottom: 0.75rem; line-height: 1; }
+.finding-title { font-family: var(--sans); font-size: 0.78rem; font-weight: 400; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink); margin-bottom: 0.5rem; }
+.finding-text { font-size: 0.85rem; color: var(--ink-soft); line-height: 1.75; }
+.finding-value { font-family: var(--mono); font-size: 1.35rem; font-weight: 300; color: var(--accent); margin-top: 0.75rem; letter-spacing: -0.01em; }
+
+/* ── RECOMMENDATION CARDS ── */
+.rec-list { display: flex; flex-direction: column; }
+.rec-item { display: grid; grid-template-columns: 200px 1fr; gap: 3rem; padding: 1.75rem 0; border-top: 1px solid var(--ink-faint); }
+.rec-item:last-child { border-bottom: 1px solid var(--ink-faint); }
+.rec-meta { display: flex; flex-direction: column; gap: 0.25rem; }
+.rec-badge { display: inline-flex; align-items: center; font-size: 0.6rem; letter-spacing: 0.12em; text-transform: uppercase; padding: 0.25rem 0.65rem; border-radius: 2px; border: 1px solid; width: fit-content; margin-bottom: 0.25rem; }
+.rec-badge.buy   { border-color: var(--green); color: var(--green); background: var(--green-soft); }
+.rec-badge.hold  { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.rec-badge.watch { border-color: var(--ink-faint); color: var(--ink-soft); background: transparent; }
+.rec-instrument { font-family: var(--sans); font-size: 0.78rem; font-weight: 400; letter-spacing: 0.06em; color: var(--ink-soft); }
+.rec-yield { font-family: var(--mono); font-size: 1.3rem; font-weight: 300; color: var(--ink); line-height: 1; letter-spacing: -0.01em; }
+.rec-body h4 { font-family: var(--serif); font-size: 1.25rem; font-weight: 300; color: var(--ink); margin-bottom: 0.4rem; }
+.rec-body p { font-size: 0.87rem; color: var(--ink-soft); line-height: 1.75; max-width: 560px; }
+
+/* ── INSIGHT BAND ── */
+.insight-band { background: var(--ink); border-radius: var(--card-radius); padding: 2.5rem 2rem; margin-bottom: 1.25rem; }
+.insight-band .sec-label { color: var(--accent); }
+.insight-band .sec-label::before { background: var(--accent); }
+.insight-band h3 { font-family: var(--serif); font-size: clamp(1.4rem, 2.5vw, 2rem); font-weight: 300; color: var(--cream); margin-bottom: 1.5rem; font-style: italic; }
+.insight-items { display: grid; grid-template-columns: repeat(3, 1fr); gap: 0; }
+.insight-item { padding: 1.25rem 1.5rem; border-right: 1px solid rgba(196,191,184,0.12); transition: background 0.2s; }
+.insight-item:last-child { border-right: none; }
+.insight-item:hover { background: rgba(247,245,240,0.04); }
+.insight-num { font-family: var(--serif); font-size: 2.2rem; font-weight: 300; font-style: italic; color: var(--accent); line-height: 1; margin-bottom: 0.5rem; }
+.insight-name { font-size: 0.72rem; letter-spacing: 0.12em; text-transform: uppercase; color: var(--cream); margin-bottom: 0.35rem; }
+.insight-desc { font-size: 0.78rem; color: rgba(247,245,240,0.45); line-height: 1.6; }
+
+/* ── FOOTER ── */
+.dash-footer {
+  padding: 2rem 0 0; margin-top: 3rem;
+  border-top: 1px solid var(--ink-faint);
+  display: flex; justify-content: space-between; align-items: center;
+  flex-wrap: wrap; gap: 0.75rem;
+}
+.dash-footer p { font-size: 0.7rem; letter-spacing: 0.04em; color: var(--ink-faint); }
+.dash-footer span { color: var(--accent); }
+
+/* ── DIVIDER ── */
+.divider { height: 1px; background: var(--ink-faint); margin: 0; }
+
+/* ── DATA SOURCE PANEL ── */
+.source-panel {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius); margin-bottom: 1.25rem; overflow: hidden;
+}
+.source-grid {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 0;
+}
+.source-item {
+  padding: 1.25rem 1.5rem;
+  border-right: 1px solid var(--ink-faint);
+  border-bottom: 1px solid var(--ink-faint);
+}
+.source-item:nth-child(3n) { border-right: none; }
+.source-item:nth-last-child(-n+3) { border-bottom: none; }
+.source-name {
+  font-size: 0.72rem; font-weight: 400; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--ink); margin-bottom: 0.3rem;
+}
+.source-name a { color: var(--accent); text-decoration: none; }
+.source-name a:hover { text-decoration: underline; }
+.source-desc { font-size: 0.75rem; color: var(--ink-soft); line-height: 1.55; }
+.source-types {
+  display: flex; flex-wrap: wrap; gap: 0.3rem; margin-top: 0.5rem;
+}
+.source-tag {
+  font-size: 0.58rem; letter-spacing: 0.08em; text-transform: uppercase;
+  padding: 0.18rem 0.5rem; border: 1px solid var(--ink-faint);
+  border-radius: 2px; color: var(--ink-faint);
+}
+
+/* ── AUDIT LOG ── */
+.audit-card {
+  background: var(--white); border: 1px solid var(--ink-faint);
+  border-radius: var(--card-radius); overflow: hidden; margin-bottom: 1.25rem;
+}
+.audit-row {
+  display: grid; grid-template-columns: 160px 120px 1fr 100px;
+  gap: 1.25rem; padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid rgba(196,191,184,0.3);
+  font-family: var(--mono); font-size: 0.75rem; color: var(--ink);
+  align-items: center;
+}
+.audit-row:last-child { border-bottom: none; }
+.audit-row.header { background: rgba(184,146,74,0.05); font-size: 0.62rem; letter-spacing: 0.1em; text-transform: uppercase; color: var(--ink-soft); font-family: var(--sans); }
+.audit-status { display: inline-flex; align-items: center; justify-content: flex-end; }
+.status-dot { width: 6px; height: 6px; border-radius: 50%; margin-right: 0.4rem; flex-shrink: 0; }
+.status-dot.ok      { background: var(--green); }
+.status-dot.warn    { background: var(--accent); }
+.status-dot.error   { background: var(--red); }
+.status-dot.loading { background: var(--ink-faint); }
+
+/* ── STALE DATA BANNER ── */
+.stale-banner {
+  display: none;
+  background: var(--accent-dim); border: 1px solid var(--accent);
+  border-radius: var(--card-radius); padding: 0.75rem 1.25rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.78rem; color: var(--ink); letter-spacing: 0.02em;
+}
+.stale-banner.visible { display: flex; align-items: center; gap: 0.75rem; }
+.stale-banner strong { color: var(--accent); }
+
+/* ── VALIDATION BADGE ── */
+.val-badge {
+  font-size: 0.6rem; letter-spacing: 0.1em; text-transform: uppercase;
+  padding: 0.22rem 0.6rem; border-radius: 2px; border: 1px solid;
+  font-family: var(--sans);
+}
+.val-badge.ok    { border-color: var(--green);  color: var(--green);  background: var(--green-soft); }
+.val-badge.warn  { border-color: var(--accent); color: var(--accent); background: var(--accent-dim); }
+.val-badge.error { border-color: var(--red);    color: var(--red);    background: var(--red-soft); }
+.val-badge.load  { border-color: var(--ink-faint); color: var(--ink-faint); background: transparent; }
+
+/* ── RESPONSIVE ── */
+@media (max-width: 1024px) {
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-grid-3 { grid-template-columns: 1fr 1fr; }
+  .insight-items { grid-template-columns: 1fr 1fr; }
+  .source-grid { grid-template-columns: 1fr 1fr; }
+  .source-item:nth-child(3n) { border-right: 1px solid var(--ink-faint); }
+  .source-item:nth-child(2n) { border-right: none; }
+  .audit-row { grid-template-columns: 140px 100px 1fr 90px; }
+}
+@media (max-width: 768px) {
+  .topbar { padding: 1rem 1.25rem; flex-wrap: wrap; gap: 0.75rem; }
+  .page { padding: 2rem 1.25rem 4rem; }
+  .kpi-grid { grid-template-columns: repeat(2, 1fr); }
+  .chart-grid-2, .chart-grid-3 { grid-template-columns: 1fr; }
+  .findings-grid { grid-template-columns: 1fr; }
+  .rec-item { grid-template-columns: 1fr; gap: 0.5rem; }
+  .insight-items { grid-template-columns: 1fr; }
+  .sec-hd-row { flex-direction: column; align-items: flex-start; gap: 0.25rem; }
+  .dash-footer { flex-direction: column; text-align: center; }
+  .source-grid { grid-template-columns: 1fr; }
+  .source-item { border-right: none !important; }
+  .audit-row { grid-template-columns: 1fr 1fr; font-size: 0.68rem; }
+}
+@media (max-width: 480px) {
+  .kpi-grid { grid-template-columns: 1fr 1fr; }
+  .kpi-value { font-size: 1.5rem; }
+}
+</style>
+</head>
+<body>
+
+<!-- ══ TOPBAR ══ -->
+<div class="topbar">
+  <div class="topbar-brand">
+    <div class="topbar-title">Bonds Research Dashboard</div>
+    <div class="topbar-sub">Indian Government Bond &amp; T-Bill Market Analysis · FY 2024–25</div>
+  </div>
+  <div class="topbar-meta">
+    <span class="topbar-badge gold">G-Sec</span>
+    <span class="topbar-badge">SDL</span>
+    <span class="topbar-badge">T-Bills</span>
+    <span class="topbar-date" id="topbar-date">RBI Data · Loading…</span>
+  </div>
+</div>
+
+<div class="page">
+
+<!-- ══ STALE DATA WARNING ══ -->
+<div class="stale-banner" id="stale-banner">
+  <span>⚠</span>
+  <span><strong>Data may be stale.</strong> <span id="stale-msg"></span> Run <code>python refresh_rbi_data.py</code> to update.</span>
+</div>
+
+<!-- ══ EXECUTIVE SUMMARY ══ -->
+<div class="sec-hd">
+  <div class="sec-label">01 — Overview</div>
+  <div class="sec-hd-row">
+    <h2>Executive <em>Summary</em></h2>
+    <span class="sec-hd-meta">10-Year Benchmark · 91-Day T-Bill · SDL Spread</span>
+  </div>
+</div>
+
+<div class="kpi-grid">
+  <div class="kpi-card">
+    <div class="kpi-label">10Y G-Sec Yield</div>
+    <div class="kpi-value accent" id="kpi-gsec10y">—</div>
+    <div class="kpi-sub" id="kpi-gsec10y-sub">Benchmark · GOI 2034 Series</div>
+    <div class="kpi-delta down" id="kpi-gsec10y-delta">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">91-Day T-Bill</div>
+    <div class="kpi-value" id="kpi-tbill91d">—</div>
+    <div class="kpi-sub" id="kpi-tbill91d-sub">—</div>
+    <div class="kpi-delta down" id="kpi-tbill91d-delta">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Yield Spread (10Y–91D)</div>
+    <div class="kpi-value" id="kpi-spread">—</div>
+    <div class="kpi-sub">Term premium · Steep slope</div>
+    <div class="kpi-delta up">▲ Wide spread vs prior cycle</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">RBI Repo Rate</div>
+    <div class="kpi-value" id="kpi-repo">—</div>
+    <div class="kpi-sub" id="kpi-repo-sub">—</div>
+    <div class="kpi-delta down" id="kpi-repo-delta">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">SDL Spread (10Y)</div>
+    <div class="kpi-value green" id="kpi-sdl">—</div>
+    <div class="kpi-sub">Over central G-Sec benchmark</div>
+    <div class="kpi-delta up" id="kpi-sdl-delta">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Real Yield (10Y)</div>
+    <div class="kpi-value" id="kpi-realyield">—</div>
+    <div class="kpi-sub" id="kpi-realyield-sub">—</div>
+    <div class="kpi-delta up">▲ Highest since 2020</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Modified Duration (10Y)</div>
+    <div class="kpi-value" id="kpi-moddur">—</div>
+    <div class="kpi-sub">Price sensitivity per 100 bps</div>
+    <div class="kpi-delta" style="color:var(--ink-faint)" id="kpi-moddur-delta">—</div>
+  </div>
+  <div class="kpi-card">
+    <div class="kpi-label">Gross Market Borrowing</div>
+    <div class="kpi-value accent" id="kpi-gmb">—</div>
+    <div class="kpi-sub" id="kpi-gmb-sub">FY 2025–26 budgeted target</div>
+    <div class="kpi-delta down" id="kpi-gmb-delta">—</div>
+  </div>
+</div>
+
+<!-- ══ YIELD CURVE ══ -->
+<div class="sec-hd" style="margin-top:3rem">
+  <div class="sec-label">02 — Structure</div>
+  <div class="sec-hd-row">
+    <h2>Yield Curve <em>Analysis</em></h2>
+    <span class="sec-hd-meta" id="yc-meta">GOI Securities · Loading…</span>
+  </div>
+</div>
+<div class="chart-grid-1">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>Indian Government Securities — Yield Curve</h3>
+      <p>Spot yields across tenors · Current vs 12 months prior · Source: RBI / CCIL</p>
+    </div>
+    <div class="chart-wrap"><canvas id="yieldCurveChart" height="72"></canvas></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#b8924a"></div><span id="yc-label-curr">Jun 2025</span></div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c4bfb8"></div><span id="yc-label-prior">Jun 2024</span></div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ GOVT BOND COMPARISON ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">03 — Comparison</div>
+  <div class="sec-hd-row">
+    <h2>Government Bond <em>Comparison</em></h2>
+    <span class="sec-hd-meta">G-Sec vs SDL vs OIS · Basis Points</span>
+  </div>
+</div>
+<div class="chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>Annual Returns by Bond Type</h3>
+      <p>Total return including coupon · FY 2021–FY 2025</p>
+    </div>
+    <div class="chart-wrap"><canvas id="annualReturnChart" height="220"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>SDL Spread Over G-Sec (10Y)</h3>
+      <p>State Development Loan premium · Monthly · bps</p>
+    </div>
+    <div class="chart-wrap"><canvas id="sdlSpreadChart" height="220"></canvas></div>
+  </div>
+</div>
+
+<div class="tbl-card">
+  <div class="tbl-hd">
+    <h3>Government Bond Reference Table</h3>
+    <span id="bond-tbl-date">As of Jun 2025 · CCIL Data</span>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Instrument</th><th>Tenor</th><th>Coupon</th>
+      <th>Yield (YTM)</th><th>Price</th>
+      <th>Mod. Duration</th><th>Convexity</th><th>vs RBI Repo</th>
+    </tr></thead>
+    <tbody id="bond-tbody"></tbody>
+  </table>
+</div>
+
+<!-- ══ T-BILL ANALYSIS ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">04 — Short-Term</div>
+  <div class="sec-hd-row">
+    <h2>Treasury Bill <em>Analysis</em></h2>
+    <span class="sec-hd-meta">91D · 182D · 364D · Weekly Auctions</span>
+  </div>
+</div>
+<div class="chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>T-Bill Auction Cut-Off Yields</h3>
+      <p>Monthly weighted average yields · Jan 2024 – Jun 2025</p>
+    </div>
+    <div class="chart-wrap"><canvas id="tbillChart" height="220"></canvas></div>
+    <div class="legend">
+      <div class="legend-item"><div class="legend-dot" style="background:#b8924a"></div>91-Day</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#6b6560"></div>182-Day</div>
+      <div class="legend-item"><div class="legend-dot" style="background:#c4bfb8"></div>364-Day</div>
+    </div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>T-Bill Devolvement Ratio</h3>
+      <p>% devolved on primary dealers by tenor · FY25</p>
+    </div>
+    <div class="chart-wrap"><canvas id="devolChart" height="220"></canvas></div>
+  </div>
+</div>
+
+<!-- ══ DURATION ANALYSIS ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">05 — Duration</div>
+  <div class="sec-hd-row">
+    <h2>Duration <em>Analysis</em></h2>
+    <span class="sec-hd-meta">Modified Duration · DV01 · Convexity</span>
+  </div>
+</div>
+<div class="chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>Modified Duration by Tenor</h3>
+      <p>Price sensitivity per 100 bps yield change</p>
+    </div>
+    <div class="chart-wrap"><canvas id="durationChart" height="220"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>DV01 (Dollar Value of 1 bp) — ₹1 Crore Face Value</h3>
+      <p>Rupee price change per 1 basis point shift in yield</p>
+    </div>
+    <div class="chart-wrap"><canvas id="dv01Chart" height="220"></canvas></div>
+  </div>
+</div>
+
+<!-- ══ INTEREST RATE RISK ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">06 — Risk</div>
+  <div class="sec-hd-row">
+    <h2>Interest Rate <em>Risk Analysis</em></h2>
+    <span class="sec-hd-meta">Scenario Analysis · Price Impact</span>
+  </div>
+</div>
+<div class="chart-grid-2">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>Price Impact — Rate Shock Scenarios</h3>
+      <p>% price change for ±50, ±100, ±200 bps yield shifts</p>
+    </div>
+    <div class="chart-wrap"><canvas id="riskScenarioChart" height="220"></canvas></div>
+  </div>
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>Convexity Profile by Tenor</h3>
+      <p>Second-order price sensitivity — higher convexity benefits longer bonds</p>
+    </div>
+    <div class="chart-wrap"><canvas id="convexityChart" height="220"></canvas></div>
+  </div>
+</div>
+
+<div class="tbl-card">
+  <div class="tbl-hd">
+    <h3>Rate Shock Scenario — Price Impact Table</h3>
+    <span>₹1 Crore Face Value · % Price Change</span>
+  </div>
+  <table>
+    <thead><tr>
+      <th>Bond</th><th>Mod. Duration</th>
+      <th>−200 bps</th><th>−100 bps</th><th>−50 bps</th>
+      <th>+50 bps</th><th>+100 bps</th><th>+200 bps</th>
+    </tr></thead>
+    <tbody id="shock-tbody"></tbody>
+  </table>
+</div>
+
+<!-- ══ HISTORICAL YIELD TRENDS ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">07 — Historical</div>
+  <div class="sec-hd-row">
+    <h2>Historical <em>Yield Trends</em></h2>
+    <span class="sec-hd-meta">10Y G-Sec · Jan 2020 – Jun 2025</span>
+  </div>
+</div>
+<div class="chart-grid-1">
+  <div class="chart-card">
+    <div class="chart-hd">
+      <h3>10-Year G-Sec Yield — 5-Year History</h3>
+      <p>Monthly average yield · RBI policy events annotated · Jan 2020 – Jun 2025</p>
+    </div>
+    <div style="margin-bottom:0.75rem">
+      <div class="tabs" id="yieldTabs">
+        <button class="tab active" onclick="switchYieldView('10y',this)">10Y G-Sec</button>
+        <button class="tab" onclick="switchYieldView('5y',this)">5Y G-Sec</button>
+        <button class="tab" onclick="switchYieldView('2y',this)">2Y G-Sec</button>
+        <button class="tab" onclick="switchYieldView('spread',this)">2Y–10Y Spread</button>
+      </div>
+    </div>
+    <div class="chart-wrap"><canvas id="histYieldChart" height="80"></canvas></div>
+  </div>
+</div>
+
+<!-- ══ INSIGHT BAND ══ -->
+<div class="insight-band" style="margin-top:2.5rem">
+  <div class="sec-label">08 — Market Pulse</div>
+  <h3>Bond Market Insights</h3>
+  <div class="insight-items">
+    <div class="insight-item">
+      <div class="insight-num" id="ins-gmb">—</div>
+      <div class="insight-name">FY26 Gross Borrowing</div>
+      <div class="insight-desc" id="ins-gmb-desc">—</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-num" id="ins-ytd">−18 bps</div>
+      <div class="insight-name">10Y Yield YTD Move</div>
+      <div class="insight-desc" id="ins-ytd-desc">Yields have softened since the RBI's Jun 2025 50 bps rate cut to 5.50% and subdued inflation prints.</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-num">JPMorgan</div>
+      <div class="insight-name">EM Index Inclusion</div>
+      <div class="insight-desc">India G-Sec fully included in JPMorgan GBI-EM since Jun 2024, bringing steady FII demand of ~₹1.2T in FY25.</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-num" id="ins-cpi">—</div>
+      <div class="insight-name">CPI Inflation (May 2025)</div>
+      <div class="insight-desc" id="ins-cpi-desc">—</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-num" id="ins-sdl">—</div>
+      <div class="insight-name">SDL-G-Sec Spread</div>
+      <div class="insight-desc">State Development Loan premium remains elevated due to state fiscal pressures, offering relative value for long-term investors.</div>
+    </div>
+    <div class="insight-item">
+      <div class="insight-num" id="ins-ry">—</div>
+      <div class="insight-name">Real Yield (10Y)</div>
+      <div class="insight-desc" id="ins-ry-desc">—</div>
+    </div>
+  </div>
+</div>
+
+<!-- ══ RESEARCH FINDINGS ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">09 — Findings</div>
+  <div class="sec-hd-row"><h2>Research <em>Findings</em></h2></div>
+</div>
+<div class="findings-grid">
+  <div class="finding-card">
+    <div class="finding-icon">📉</div>
+    <div class="finding-title">Curve Flattening Trend</div>
+    <div class="finding-text" id="find-curve">—</div>
+    <div class="finding-value">−70 bps Compression</div>
+  </div>
+  <div class="finding-card">
+    <div class="finding-icon">🏛️</div>
+    <div class="finding-title">Fiscal Consolidation Supporting Bonds</div>
+    <div class="finding-text">The fiscal deficit target of 4.5% of GDP for FY26, down from 5.1% in FY24, reduces net supply pressure and is a structural positive for long-duration G-Secs.</div>
+    <div class="finding-value">4.5% Deficit Target</div>
+  </div>
+  <div class="finding-card">
+    <div class="finding-icon">🌐</div>
+    <div class="finding-title">FII Inflows Post JP Morgan Inclusion</div>
+    <div class="finding-text">Foreign portfolio inflows of ₹1.23T into G-Secs in FY25 as a result of index inclusion have contributed to yield compression, particularly at the 5–10Y part of the curve.</div>
+    <div class="finding-value">₹1.23T FII Inflows</div>
+  </div>
+  <div class="finding-card">
+    <div class="finding-icon">⚡</div>
+    <div class="finding-title">Duration Risk Elevated at Long End</div>
+    <div class="finding-text">The 30Y G-Sec offers only 18 bps over the 10Y benchmark, implying investors take on 9.3 additional years of duration for minimal compensation — poor risk-reward at current levels.</div>
+    <div class="finding-value">18 bps / 9.3Y Extra Risk</div>
+  </div>
+  <div class="finding-card">
+    <div class="finding-icon">📊</div>
+    <div class="finding-title">SDL Relative Value</div>
+    <div class="finding-text" id="find-sdl">—</div>
+    <div class="finding-value" id="find-sdl-val">—</div>
+  </div>
+  <div class="finding-card">
+    <div class="finding-icon">🔮</div>
+    <div class="finding-title">Terminal Repo Rate Estimate</div>
+    <div class="finding-text" id="find-repo">—</div>
+    <div class="finding-value" id="find-repo-val">—</div>
+  </div>
+</div>
+
+<!-- ══ INVESTMENT RECOMMENDATIONS ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">10 — Strategy</div>
+  <div class="sec-hd-row"><h2>Investment <em>Recommendations</em></h2></div>
+</div>
+<div class="rec-list">
+  <div class="rec-item">
+    <div class="rec-meta">
+      <span class="rec-badge buy">Strong Buy</span>
+      <span class="rec-instrument">GOI 5Y G-Sec · 2029 Series</span>
+      <div class="rec-yield" id="rec-5y">—</div>
+    </div>
+    <div class="rec-body">
+      <h4>5-Year G-Sec — Sweet Spot of the Curve</h4>
+      <p id="rec-5y-body">—</p>
+    </div>
+  </div>
+  <div class="rec-item">
+    <div class="rec-meta">
+      <span class="rec-badge buy">Buy</span>
+      <span class="rec-instrument">SDL 10Y · Average State Issuance</span>
+      <div class="rec-yield" id="rec-sdl">—</div>
+    </div>
+    <div class="rec-body">
+      <h4>State Development Loans — Yield Enhancement</h4>
+      <p id="rec-sdl-body">—</p>
+    </div>
+  </div>
+  <div class="rec-item">
+    <div class="rec-meta">
+      <span class="rec-badge hold">Hold</span>
+      <span class="rec-instrument">GOI 10Y Benchmark · 2034 Series</span>
+      <div class="rec-yield" id="rec-10y">—</div>
+    </div>
+    <div class="rec-body">
+      <h4>10-Year Benchmark — Fairly Valued</h4>
+      <p>The 10Y benchmark is fairly priced, reflecting the current macro environment. Existing holders should hold as further rate cuts will provide price appreciation. New entrants, however, may find better risk-reward at the 5Y tenor given the flat 2Y–10Y spread.</p>
+    </div>
+  </div>
+  <div class="rec-item">
+    <div class="rec-meta">
+      <span class="rec-badge watch">Watch</span>
+      <span class="rec-instrument">GOI 30Y G-Sec · 2054 Series</span>
+      <div class="rec-yield" id="rec-30y">—</div>
+    </div>
+    <div class="rec-body">
+      <h4>30-Year Bond — Avoid at Current Spread</h4>
+      <p>The 30Y–10Y spread of just 18 bps is historically narrow, compensating poorly for the additional 9.3 years of duration risk. Unless the spread widens above 40 bps, the 30Y segment offers an unattractive risk-reward trade-off for most investor classes.</p>
+    </div>
+  </div>
+  <div class="rec-item">
+    <div class="rec-meta">
+      <span class="rec-badge buy">Accumulate</span>
+      <span class="rec-instrument">364-Day T-Bills · Rolling Strategy</span>
+      <div class="rec-yield" id="rec-364d">—</div>
+    </div>
+    <div class="rec-body">
+      <h4>T-Bills — Park Liquidity Efficiently</h4>
+      <p id="rec-364d-body">—</p>
+    </div>
+  </div>
+</div>
+
+<!-- ══ DATA SOURCES ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">11 — Sources</div>
+  <div class="sec-hd-row"><h2>Data <em>Sources</em></h2></div>
+</div>
+<div class="source-panel">
+  <div class="tbl-hd">
+    <h3>Reference Data Sources</h3>
+    <span>Official &amp; Authoritative Sources Only</span>
+  </div>
+  <div class="source-grid" id="source-grid"></div>
+</div>
+
+<!-- ══ AUDIT LOG ══ -->
+<div class="sec-hd" style="margin-top:2.5rem">
+  <div class="sec-label">12 — Audit</div>
+  <div class="sec-hd-row">
+    <h2>Data Audit <em>Log</em></h2>
+    <span class="sec-hd-meta" id="audit-val-badge-wrap"></span>
+  </div>
+</div>
+<div class="audit-card">
+  <div class="audit-row header">
+    <span>Timestamp</span><span>Action</span><span>Changes</span><span style="text-align:right">Status</span>
+  </div>
+  <div id="audit-body"></div>
+</div>
+
+<!-- ══ FOOTER ══ -->
+<div class="dash-footer">
+  <p>Bonds Research Dashboard · <span>Javvaji Venkatesh</span> · Indian Government Securities Analysis · FY 2024–25</p>
+  <p>Data Sources: RBI, CCIL, FBIL, NSE India · For academic and research purposes only · Not investment advice</p>
+</div>
+
+</div><!-- /page -->
+
+<script>
+// ════ DESIGN TOKENS ════
+const ACCENT    = '#b8924a';
+const INK       = '#1a1816';
+const INK_SOFT  = '#6b6560';
+const INK_FAINT = '#c4bfb8';
+const CREAM     = '#f7f5f0';
+const GREEN     = '#2d7a4f';
+const RED       = '#b34a4a';
+const GRID_CLR  = 'rgba(196,191,184,0.25)';
+
+Chart.defaults.font.family = "'DM Sans', sans-serif";
+Chart.defaults.font.size   = 11;
+Chart.defaults.color       = INK_SOFT;
+
+function baseOpts(opts = {}) {
+  return {
+    responsive: true, maintainAspectRatio: true,
+    plugins: {
+      legend: { display: false },
+      tooltip: {
+        backgroundColor: '#ffffff', borderColor: INK_FAINT, borderWidth: 1,
+        titleColor: INK, bodyColor: INK_SOFT,
+        titleFont: { size: 11, weight: '400', family: "'DM Sans', sans-serif" },
+        bodyFont:  { size: 10, family: "'Inter', sans-serif" },
+        padding: 10, ...(opts.tooltip || {})
+      }
+    },
+    scales: {
+      x: { grid: { color: GRID_CLR, drawBorder: false }, ticks: { font: { size: 10 }, color: INK_SOFT, maxTicksLimit: 10 } },
+      y: { grid: { color: GRID_CLR, drawBorder: false }, ticks: { font: { size: 10 }, color: INK_SOFT } }
+    },
+    ...opts
+  };
+}
+
+// ════ CHART INSTANCES ════
+let charts = {};
+
+// ════ HELPERS ════
+function pct(v, dp = 2)  { return v != null ? v.toFixed(dp) + '%' : '—'; }
+function bps(v)           { return v != null ? (v > 0 ? '+' : '') + v + ' bps' : '—'; }
+function fmtDate(iso)     {
+  if (!iso) return '—';
+  const d = new Date(iso);
+  return d.toLocaleDateString('en-IN', { day:'2-digit', month:'short', year:'numeric' });
+}
+function el(id)           { return document.getElementById(id); }
+function set(id, txt)     { const e = el(id); if (e) e.textContent = txt; }
+
+function staleDays(isoStr) {
+  if (!isoStr) return 9999;
+  const d = new Date(isoStr);
+  return Math.floor((Date.now() - d.getTime()) / 86400000);
+}
+
+// ════ VALIDATION ════
+function validateData(d) {
+  const errors = [], warnings = [];
+  const rf = d.risk_free, kpi = d.kpi, pol = d.policy;
+
+  // 1. Risk-free formula reconciliation
+  if (rf && rf.cutoff_price && rf.implicit_yield) {
+    const computed = ((100 - rf.cutoff_price) / rf.cutoff_price) * (365 / (rf.tenor_days || 91)) * 100;
+    if (Math.abs(computed - rf.implicit_yield) > 0.003) {
+      errors.push(`RF yield formula mismatch: computed ${computed.toFixed(4)}% vs reported ${rf.implicit_yield}%`);
+    }
+  }
+
+  // 2. Sanity ranges
+  if (kpi) {
+    if (kpi.gsec_10y_yield < 2 || kpi.gsec_10y_yield > 15) errors.push(`10Y yield ${kpi.gsec_10y_yield}% out of sanity range`);
+    if (kpi.tbill_91d_yield < 1 || kpi.tbill_91d_yield > 15) errors.push(`91D yield ${kpi.tbill_91d_yield}% out of sanity range`);
+  }
+
+  // 3. Date freshness
+  const age = staleDays(d._meta && d._meta.last_updated);
+  const threshold = (d._meta && d._meta.stale_threshold_days) || 7;
+  if (age > threshold) warnings.push(`Data is ${age} days old (threshold: ${threshold} days)`);
+
+  // 4. Required fields
+  ['risk_free','kpi','policy','yield_curve','bond_table'].forEach(k => {
+    if (!d[k]) errors.push(`Missing required section: ${k}`);
+  });
+
+  return { errors, warnings, age };
+}
+
+// ════ DOM POPULATION ════
+function populateKPIs(d) {
+  const k = d.kpi, p = d.policy, rf = d.risk_free;
+
+  set('kpi-gsec10y',       pct(k.gsec_10y_yield));
+  set('kpi-gsec10y-delta', k.gsec_10y_delta_label || '—');
+  set('kpi-tbill91d',      pct(rf.implicit_yield, 4));
+  set('kpi-tbill91d-sub',  `Auction cut-off yield · ${fmtDate(rf.auction_date)}`);
+  set('kpi-tbill91d-delta','▼ RBI DBIE · Implicit yield from price ' + rf.cutoff_price);
+  set('kpi-spread',        k.yield_spread_10y_91d_bps + ' bps');
+  set('kpi-repo',          pct(p.repo_rate));
+  set('kpi-repo-sub',      `Policy rate · Effective ${fmtDate(p.repo_rate_effective_date)}`);
+  set('kpi-repo-delta',    `▼ Cut ${Math.abs(p.repo_rate_change_bps)} bps · Jun 2025 MPC`);
+  set('kpi-sdl',           k.sdl_spread_10y_bps + ' bps');
+  set('kpi-sdl-delta',     `▲ ${k.sdl_spread_delta_bps} bps from Mar 2025`);
+  set('kpi-realyield',     pct(k.real_yield_10y));
+  set('kpi-realyield-sub', `Nominal minus CPI (${k.cpi_may2025}% · ${k.cpi_source})`);
+  set('kpi-moddur',        k.mod_duration_10y);
+  set('kpi-moddur-delta',  `— Approximately ${k.mod_duration_10y}% price move`);
+  set('kpi-gmb',           '₹' + k.gross_borrowing_fy26_trn + 'T');
+  set('kpi-gmb-delta',     `▼ ₹${(k.gross_borrowing_fy25_trn - k.gross_borrowing_fy26_trn).toFixed(2)}T below FY25 actual`);
+}
+
+function populateInsightBand(d) {
+  const k = d.kpi, p = d.policy;
+  set('ins-gmb',      '₹' + k.gross_borrowing_fy26_trn + 'T');
+  set('ins-gmb-desc', `Budgeted government market borrowing, slightly lower than FY25 actual of ₹${k.gross_borrowing_fy25_trn}T, a positive supply signal.`);
+  set('ins-ytd-desc', `Yields have softened since the RBI's Jun 2025 ${Math.abs(p.repo_rate_change_bps)} bps rate cut to ${p.repo_rate}% and subdued inflation prints.`);
+  set('ins-cpi',      k.cpi_may2025 + '%');
+  set('ins-cpi-desc', `${k.cpi_source} — well below RBI's 4% target, supporting the easing cycle and positive for bond prices.`);
+  set('ins-sdl',      k.sdl_spread_10y_bps + ' bps');
+  set('ins-ry',       pct(k.real_yield_10y));
+  set('ins-ry-desc',  `Positive real yields (10Y nominal ${k.gsec_10y_yield}% minus May CPI ${k.cpi_may2025}%) make Indian G-Secs highly attractive vs EM peers.`);
+}
+
+function populateFindings(d) {
+  const k = d.kpi, p = d.policy;
+  const spread2y10y = d.historical_yields && d.historical_yields.spread_2y_10y_bps;
+  const latestSpread = spread2y10y ? spread2y10y[spread2y10y.length - 1] : 15;
+  set('find-curve', `The 2Y–10Y spread stands at ${latestSpread} bps (Jun 2025), a steep compression from earlier in the year. With the RBI repo now at ${p.repo_rate}% following the Jun 2025 cut, the curve remains positively sloped but markets have largely priced in this easing cycle.`);
+
+  const sdlYield = k.gsec_10y_yield + k.sdl_spread_10y_bps / 100;
+  set('find-sdl',     `SDL yields at ~${sdlYield.toFixed(2)}% (10Y average) offer an attractive ${k.sdl_spread_10y_bps} bps spread over central G-Secs. For insurance companies and long-term investors, SDLs offer compelling risk-adjusted carry.`);
+  set('find-sdl-val', `${sdlYield.toFixed(2)}% Average SDL Yield`);
+  set('find-repo',    `Market pricing and OIS curves suggest a terminal repo rate of ~${(p.repo_rate - 0.25).toFixed(2)}–${p.repo_rate}% in this cycle. The RBI cut ${Math.abs(p.repo_rate_change_bps)} bps on ${fmtDate(p.repo_rate_effective_date)}, making the short end more anchored near the repo floor.`);
+  set('find-repo-val',`${(p.repo_rate - 0.25).toFixed(2)}–${p.repo_rate}% Terminal Rate`);
+}
+
+function populateRecommendations(d) {
+  const k = d.kpi, p = d.policy;
+  const bt = d.bond_table.bonds;
+  const find = (label) => bt.find(b => b.instrument.includes(label));
+
+  const b5y   = find('5Y');
+  const bsdl  = { ytm: k.gsec_10y_yield + k.sdl_spread_10y_bps / 100 };
+  const b10y  = find('10Y Benchmark');
+  const b30y  = find('30Y');
+  const b364  = find('364D');
+
+  set('rec-5y',  b5y   ? pct(b5y.ytm)   : '—');
+  set('rec-sdl', pct(bsdl.ytm));
+  set('rec-10y', b10y  ? pct(b10y.ytm)  : '—');
+  set('rec-30y', b30y  ? pct(b30y.ytm)  : '—');
+  set('rec-364d',b364  ? pct(b364.ytm)  : '—');
+
+  set('rec-5y-body', `The 5Y tenor offers the best risk-adjusted positioning. It captures most of the expected rate-cut rally (high duration sensitivity), yet avoids the poor risk compensation at the very long end. With RBI repo at ${p.repo_rate}% and potential for further easing, this segment could deliver 6–8% total returns over 12 months.`);
+  set('rec-sdl-body', `SDLs at ~${k.sdl_spread_10y_bps} bps spread offer meaningful carry pickup over G-Secs with near-sovereign credit quality. Long-term investors such as insurance companies and provident funds should overweight SDLs for carry without taking meaningful credit risk.`);
+  set('rec-364d-body', `364-Day T-Bills at ${b364 ? pct(b364.ytm) : '—'} offer an attractive risk-free yield for short-duration capital. A rolling T-Bill ladder strategy provides liquidity, eliminates credit risk, and earns a meaningful premium over overnight rates and savings deposits.`);
+}
+
+function populateBondTable(d) {
+  const tbody = el('bond-tbody');
+  if (!tbody || !d.bond_table) return;
+  set('bond-tbl-date', `As of ${d.bond_table.as_of} · ${d.bond_table.source}`);
+  tbody.innerHTML = d.bond_table.bonds.map(b => {
+    const ytm = typeof b.ytm === 'number' ? pct(b.ytm, 4) : b.ytm;
+    const coupon = typeof b.coupon === 'number' ? pct(b.coupon) : b.coupon;
+    return `<tr>
+      <td>${b.instrument}</td>
+      <td class="neu">${b.tenor}</td>
+      <td class="neu">${coupon}</td>
+      <td class="pos">${ytm}</td>
+      <td>${b.price.toFixed(2)}</td>
+      <td class="neu">${b.mod_duration}</td>
+      <td class="neu">${b.convexity.toFixed(2)}</td>
+      <td class="pos">+${b.vs_repo_bps} bps</td>
+    </tr>`;
+  }).join('');
+}
+
+function populateShockTable(d) {
+  const tbody = el('shock-tbody');
+  if (!tbody || !d.rate_shock || !d.duration_analytics) return;
+  const rs = d.rate_shock, da = d.duration_analytics;
+  const labels = ['2Y G-Sec','5Y G-Sec','10Y G-Sec (Benchmark)','15Y G-Sec','30Y G-Sec'];
+  // Also add 91D from bond_table
+  const bt91 = d.bond_table.bonds.find(b => b.instrument.includes('91D'));
+  const allRows = bt91 ? [
+    { label: '91D T-Bill', dur: bt91.mod_duration, m200: '+0.48%', m100: '+0.24%', m50: '+0.12%', p50: '−0.12%', p100: '−0.24%', p200: '−0.48%' }
+  ] : [];
+  rs.tenors.forEach((t, i) => {
+    allRows.push({
+      label: labels[i] || t,
+      dur: da.mod_duration[3 + (i === 0 ? 0 : i === 1 ? 1 : i === 2 ? 2 : i === 3 ? 3 : 4)],
+      m200: rs.scenarios.m200[i], m100: rs.scenarios.m100[i],
+      p100: rs.scenarios.p100[i], p200: rs.scenarios.p200[i]
+    });
+  });
+  tbody.innerHTML = allRows.map(r => {
+    const fmt = v => typeof v === 'number' ? (v > 0 ? `<td class="pos">+${v.toFixed(2)}%</td>` : `<td class="neg">${v.toFixed(2)}%</td>`) : `<td>${v}</td>`;
+    if (typeof r.m200 === 'string') {
+      return `<tr><td>${r.label}</td><td class="neu">${r.dur}</td><td class="pos">${r.m200}</td><td class="pos">${r.m100}</td><td class="pos">${r.m50}</td><td class="neg">${r.p50}</td><td class="neg">${r.p100}</td><td class="neg">${r.p200}</td></tr>`;
+    }
+    const m50 = +(rs.scenarios.m100[rs.tenors.indexOf(r._t)] / 2).toFixed(2);
+    return `<tr><td>${r.label}</td><td class="neu">${r.dur}</td>${fmt(r.m200)}${fmt(r.m100)}<td class="pos">—</td><td class="neg">—</td>${fmt(r.p100)}${fmt(r.p200)}</tr>`;
+  }).join('');
+
+  // Rebuild cleanly from raw data
+  tbody.innerHTML = '';
+  // Row 0: 91D T-Bill from bond_table
+  if (bt91) {
+    tbody.innerHTML += `<tr><td>91D T-Bill</td><td class="neu">${bt91.mod_duration}</td><td class="pos">+0.48%</td><td class="pos">+0.24%</td><td class="pos">+0.12%</td><td class="neg">−0.12%</td><td class="neg">−0.24%</td><td class="neg">−0.48%</td></tr>`;
+  }
+  const shockLabels = ['2Y G-Sec','5Y G-Sec','10Y G-Sec (Benchmark)','15Y G-Sec','30Y G-Sec'];
+  const durIdx      = [1, 2, 3, 4, 5]; // indices into da.mod_duration for 2Y,5Y,10Y,15Y,30Y
+  rs.tenors.forEach((t, i) => {
+    const dur = da.mod_duration[i + 2]; // offset: 0=91D,1=182D,2=364D => 3=2Y
+    const actualDur = [1.87,4.31,7.42,10.18,16.72][i];
+    const s = rs.scenarios;
+    const fmt = (v, pos) => pos
+      ? `<td class="pos">+${Math.abs(v).toFixed(2)}%</td>`
+      : `<td class="neg">−${Math.abs(v).toFixed(2)}%</td>`;
+    const m50  = +(s.m100[i] / 2).toFixed(2);
+    const p50  = +(Math.abs(s.p100[i]) / 2).toFixed(2);
+    tbody.innerHTML += `<tr>
+      <td>${shockLabels[i]}</td>
+      <td class="neu">${actualDur}</td>
+      <td class="pos">+${Math.abs(s.m200[i]).toFixed(2)}%</td>
+      <td class="pos">+${Math.abs(s.m100[i]).toFixed(2)}%</td>
+      <td class="pos">+${m50}%</td>
+      <td class="neg">−${p50}%</td>
+      <td class="neg">−${Math.abs(s.p100[i]).toFixed(2)}%</td>
+      <td class="neg">−${Math.abs(s.p200[i]).toFixed(2)}%</td>
+    </tr>`;
+  });
+}
+
+function populateSources(d) {
+  const grid = el('source-grid');
+  if (!grid || !d.data_sources) return;
+  grid.innerHTML = d.data_sources.map(s => `
+    <div class="source-item">
+      <div class="source-name"><a href="${s.url}" target="_blank" rel="noopener">${s.name}</a></div>
+      <div class="source-desc">${s.description}</div>
+      <div class="source-types">${(s.data_types || []).map(t => `<span class="source-tag">${t.replace(/_/g,' ')}</span>`).join('')}</div>
+    </div>
+  `).join('');
+}
+
+function populateAuditLog(d, validation) {
+  const body = el('audit-body');
+  if (!body) return;
+  const log = (d.audit_log || []).slice().reverse(); // newest first
+
+  // Add current session validation row at top
+  const now = new Date().toLocaleString('en-IN', { timeZone:'Asia/Kolkata' });
+  const sessionStatus = validation.errors.length > 0 ? 'error' : validation.warnings.length > 0 ? 'warn' : 'ok';
+  const sessionMsg    = validation.errors.length > 0
+    ? 'Validation errors: ' + validation.errors.join('; ')
+    : validation.warnings.length > 0
+    ? 'Warnings: ' + validation.warnings.join('; ')
+    : 'All checks passed';
+  const sessionEntry = { timestamp: new Date().toISOString(), action: 'page_load_validation', operator: 'browser', changes: sessionMsg, validation_status: sessionStatus };
+
+  [sessionEntry, ...log].forEach(entry => {
+    const st  = entry.validation_status || 'ok';
+    const dot = st === 'passed' || st === 'ok' ? 'ok' : st.includes('warn') ? 'warn' : 'error';
+    const dtStr = fmtDate(entry.timestamp) || entry.timestamp;
+    body.innerHTML += `<div class="audit-row">
+      <span style="color:var(--ink-soft)">${dtStr}</span>
+      <span>${entry.action || '—'}</span>
+      <span style="color:var(--ink-soft);font-size:0.72rem">${entry.changes || '—'}</span>
+      <div class="audit-status">
+        <span class="status-dot ${dot}"></span>
+        <span class="val-badge ${dot}">${st.replace('_',' ')}</span>
+      </div>
+    </div>`;
+  });
+
+  // Overall badge in section header
+  const wrap = el('audit-val-badge-wrap');
+  if (wrap) {
+    const cls = validation.errors.length > 0 ? 'error' : validation.warnings.length > 0 ? 'warn' : 'ok';
+    const lbl = validation.errors.length > 0 ? 'Errors Found' : validation.warnings.length > 0 ? 'Warnings' : 'Validated';
+    wrap.innerHTML = `<span class="val-badge ${cls}" style="font-size:0.68rem">${lbl}</span>`;
+  }
+}
+
+function checkStaleness(d) {
+  const age = staleDays(d._meta && d._meta.last_updated);
+  const thresh = (d._meta && d._meta.stale_threshold_days) || 7;
+  if (age > thresh) {
+    const banner = el('stale-banner');
+    const msg    = el('stale-msg');
+    if (banner) banner.classList.add('visible');
+    if (msg)    msg.textContent = `Data was last updated ${age} days ago (${fmtDate(d._meta.last_updated)}).`;
+  }
+}
+
+// ════ CHART BUILDERS ════
+function buildYieldCurve(d) {
+  const yc = d.yield_curve;
+  set('yc-label-curr', yc.current.label);
+  set('yc-label-prior', yc.prior_year.label);
+  set('yc-meta', `GOI Securities · ${yc.current.label} vs ${yc.prior_year.label}`);
+  const allYields = [...yc.current.yields, ...yc.prior_year.yields].filter(Number.isFinite);
+  const yMin = Math.floor(Math.min(...allYields) * 10) / 10 - 0.2;
+  const yMax = Math.ceil(Math.max(...allYields)  * 10) / 10 + 0.2;
+
+  if (charts.yieldCurve) charts.yieldCurve.destroy();
+  charts.yieldCurve = new Chart(el('yieldCurveChart'), {
+    type: 'line',
+    data: {
+      labels: yc.tenors,
+      datasets: [
+        { label: yc.current.label,   data: yc.current.yields,    borderColor: ACCENT,    backgroundColor: 'rgba(184,146,74,0.08)', borderWidth: 2, fill: true, tension: 0.4, pointRadius: 4, pointBackgroundColor: ACCENT,    pointBorderColor: '#fff', pointBorderWidth: 1.5 },
+        { label: yc.prior_year.label,data: yc.prior_year.yields, borderColor: INK_FAINT, backgroundColor: 'transparent',           borderWidth: 1.5, borderDash: [5,4], fill: false, tension: 0.4, pointRadius: 3, pointBackgroundColor: INK_FAINT }
+      ]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins,
+        legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 16, font: { size: 11 } } },
+        tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } }
+      },
+      scales: {
+        x: { grid: { color: GRID_CLR }, ticks: { font: { size: 10 }, color: INK_SOFT } },
+        y: { grid: { color: GRID_CLR }, ticks: { callback: v => v.toFixed(2)+'%', font: { size: 10 }, color: INK_SOFT }, min: yMin, max: yMax }
+      }
+    }
+  });
+}
+
+function buildAnnualReturns(d) {
+  const ar = d.annual_returns;
+  if (charts.annualReturn) charts.annualReturn.destroy();
+  charts.annualReturn = new Chart(el('annualReturnChart'), {
+    type: 'bar',
+    data: {
+      labels: ar.fy_labels,
+      datasets: [
+        { label: '10Y G-Sec', data: ar.gsec_10y,  backgroundColor: ar.gsec_10y.map(v => v >= 0 ? 'rgba(184,146,74,0.75)' : 'rgba(179,74,74,0.65)'), borderRadius: 2 },
+        { label: '10Y SDL',   data: ar.sdl_10y,   backgroundColor: ar.sdl_10y.map(v => v >= 0 ? 'rgba(45,122,79,0.65)' : 'rgba(179,74,74,0.45)'), borderRadius: 2 },
+        { label: 'T-Bill',    data: ar.tbill,      backgroundColor: 'rgba(196,191,184,0.6)', borderRadius: 2 }
+      ]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins,
+        legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 12, font: { size: 10 } } },
+        tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } }
+      },
+      scales: {
+        x: { grid: { color: GRID_CLR }, ticks: { font: { size: 10 } } },
+        y: { grid: { color: GRID_CLR }, ticks: { callback: v => v+'%', font: { size: 10 } } }
+      }
+    }
+  });
+}
+
+function buildSDLSpread(d) {
+  const ss = d.sdl_spread_series;
+  if (charts.sdl) charts.sdl.destroy();
+  const minSpread = Math.min(...ss.spread_bps) - 4;
+  const maxSpread = Math.max(...ss.spread_bps) + 4;
+  charts.sdl = new Chart(el('sdlSpreadChart'), {
+    type: 'line',
+    data: {
+      labels: ss.labels,
+      datasets: [{ label: 'SDL Spread (bps)', data: ss.spread_bps, borderColor: ACCENT, backgroundColor: 'rgba(184,146,74,0.07)', borderWidth: 2, fill: true, tension: 0.35, pointRadius: 2.5, pointBackgroundColor: ACCENT }]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` SDL Spread: ${c.parsed.y} bps` } } },
+      scales: {
+        x: { grid: { color: GRID_CLR }, ticks: { maxTicksLimit: 9, font: { size: 9 } } },
+        y: { grid: { color: GRID_CLR }, ticks: { callback: v => v+' bps', font: { size: 10 } }, min: minSpread, max: maxSpread }
+      }
+    }
+  });
+}
+
+function buildTBill(d) {
+  const tb = d.tbill_series;
+  const allVals = [...tb.tbill_91d, ...tb.tbill_182d, ...tb.tbill_364d];
+  const yMin = Math.floor(Math.min(...allVals) * 10) / 10 - 0.1;
+  const yMax = Math.ceil(Math.max(...allVals)  * 10) / 10 + 0.1;
+  if (charts.tbill) charts.tbill.destroy();
+  charts.tbill = new Chart(el('tbillChart'), {
+    type: 'line',
+    data: {
+      labels: tb.labels,
+      datasets: [
+        { label:'91-Day',  data: tb.tbill_91d,  borderColor: ACCENT,    borderWidth: 2, fill: false, tension: 0.3, pointRadius: 1.5, pointBackgroundColor: ACCENT },
+        { label:'182-Day', data: tb.tbill_182d, borderColor: INK_SOFT,  borderWidth: 2, fill: false, tension: 0.3, pointRadius: 1.5, pointBackgroundColor: INK_SOFT },
+        { label:'364-Day', data: tb.tbill_364d, borderColor: INK_FAINT, borderWidth: 2, fill: false, tension: 0.3, pointRadius: 1.5, pointBackgroundColor: INK_FAINT }
+      ]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins,
+        legend: { display: true, position: 'top', labels: { boxWidth: 10, padding: 12, font:{size:10} } },
+        tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } }
+      },
+      scales: {
+        x: { grid:{color:GRID_CLR}, ticks:{maxTicksLimit:9,font:{size:9}} },
+        y: { grid:{color:GRID_CLR}, ticks:{callback:v=>v.toFixed(2)+'%',font:{size:10}}, min:yMin, max:yMax }
+      }
+    }
+  });
+}
+
+function buildDevolvement(d) {
+  const dev = d.devolvement;
+  if (charts.devol) charts.devol.destroy();
+  charts.devol = new Chart(el('devolChart'), {
+    type: 'bar',
+    data: {
+      labels: dev.labels,
+      datasets: [{ label: 'Devolvement %', data: dev.values, backgroundColor: 'rgba(184,146,74,0.6)', borderRadius: 2, hoverBackgroundColor: ACCENT }]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` Devolvement: ${c.parsed.y}%` } } },
+      scales: {
+        x: { grid:{color:GRID_CLR}, ticks:{font:{size:9}} },
+        y: { grid:{color:GRID_CLR}, ticks:{callback:v=>v+'%',font:{size:10}}, min:0 }
+      }
+    }
+  });
+}
+
+function buildDuration(d) {
+  const da = d.duration_analytics;
+  if (charts.duration) charts.duration.destroy();
+  charts.duration = new Chart(el('durationChart'), {
+    type: 'bar',
+    data: {
+      labels: da.tenors,
+      datasets: [{ label: 'Modified Duration', data: da.mod_duration, backgroundColor: da.tenors.map((_,i) => `rgba(184,146,74,${0.35 + i*0.09})`), borderRadius: 2 }]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` Mod. Duration: ${c.parsed.y.toFixed(2)} years` } } },
+      scales: { x: { grid:{color:GRID_CLR}, ticks:{font:{size:10}} }, y: { grid:{color:GRID_CLR}, ticks:{font:{size:10}}, beginAtZero:true } }
+    }
+  });
+
+  if (charts.dv01) charts.dv01.destroy();
+  charts.dv01 = new Chart(el('dv01Chart'), {
+    type: 'bar',
+    data: {
+      labels: da.tenors,
+      datasets: [{ label: 'DV01 (₹ per 1 bp)', data: da.dv01_per_crore, backgroundColor: 'rgba(45,122,79,0.55)', borderRadius: 2, hoverBackgroundColor: GREEN }]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks: { label: c => ` DV01: ₹${c.parsed.y.toLocaleString('en-IN')} per ₹1Cr` } } },
+      scales: { x: { grid:{color:GRID_CLR}, ticks:{font:{size:10}} }, y: { grid:{color:GRID_CLR}, ticks:{callback:v=>'₹'+v.toLocaleString('en-IN'),font:{size:9}}, beginAtZero:true } }
+    }
+  });
+}
+
+function buildRiskScenarios(d) {
+  const rs = d.rate_shock;
+  if (charts.riskScenario) charts.riskScenario.destroy();
+  charts.riskScenario = new Chart(el('riskScenarioChart'), {
+    type: 'bar',
+    data: {
+      labels: rs.tenors,
+      datasets: [
+        { label:'−200 bps', data: rs.scenarios.m200, backgroundColor:'rgba(45,122,79,0.7)',  borderRadius:2 },
+        { label:'−100 bps', data: rs.scenarios.m100, backgroundColor:'rgba(45,122,79,0.4)',  borderRadius:2 },
+        { label:'+100 bps', data: rs.scenarios.p100, backgroundColor:'rgba(179,74,74,0.45)', borderRadius:2 },
+        { label:'+200 bps', data: rs.scenarios.p200, backgroundColor:'rgba(179,74,74,0.7)',  borderRadius:2 }
+      ]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, legend: { display:true, position:'top', labels:{boxWidth:10,padding:12,font:{size:10}} }, tooltip: { ...baseOpts().plugins.tooltip, callbacks:{ label:c=>` ${c.dataset.label}: ${c.parsed.y.toFixed(2)}%` } } },
+      scales: { x:{grid:{color:GRID_CLR},ticks:{font:{size:10}}}, y:{grid:{color:GRID_CLR},ticks:{callback:v=>v+'%',font:{size:10}}} }
+    }
+  });
+
+  const da = d.duration_analytics;
+  const convexityVals = [da.convexity[3], da.convexity[4], da.convexity[5], da.convexity[6], da.convexity[7]]; // 2Y,5Y,10Y,15Y,30Y
+  if (charts.convexity) charts.convexity.destroy();
+  charts.convexity = new Chart(el('convexityChart'), {
+    type: 'line',
+    data: {
+      labels: rs.tenors,
+      datasets: [{ label:'Convexity', data: convexityVals, borderColor:ACCENT, backgroundColor:'rgba(184,146,74,0.08)', borderWidth:2, fill:true, tension:0.4, pointRadius:5, pointBackgroundColor:ACCENT, pointBorderColor:'#fff', pointBorderWidth:1.5 }]
+    },
+    options: {
+      ...baseOpts(),
+      plugins: { ...baseOpts().plugins, tooltip: { ...baseOpts().plugins.tooltip, callbacks:{ label:c=>` Convexity: ${c.parsed.y.toFixed(2)}` } } },
+      scales: { x:{grid:{color:GRID_CLR},ticks:{font:{size:10}}}, y:{grid:{color:GRID_CLR},ticks:{font:{size:10}},beginAtZero:true} }
+    }
+  });
+}
+
+let histChart = null;
+let _histData = null;
+
+function buildHistChart(view) {
+  if (!_histData) return;
+  const hy = _histData;
+  const dataMap = { '10y': hy.gsec_10y, '5y': hy.gsec_5y, '2y': hy.gsec_2y, 'spread': hy.spread_2y_10y_bps };
+  const data  = dataMap[view] || hy.gsec_10y;
+  const isSpr = view === 'spread';
+  const cfg = {
+    type:'line',
+    data:{ labels: hy.labels, datasets:[{ label: isSpr ? '2Y–10Y Spread (bps)' : view.toUpperCase()+' G-Sec Yield', data, borderColor:ACCENT, backgroundColor:'rgba(184,146,74,0.07)', borderWidth:2, fill:true, tension:0.35, pointRadius:1.5, pointBackgroundColor:ACCENT }] },
+    options:{ ...baseOpts(),
+      plugins:{ ...baseOpts().plugins, tooltip:{ ...baseOpts().plugins.tooltip, callbacks:{ label:c=>isSpr?` Spread: ${c.parsed.y} bps`:` Yield: ${c.parsed.y.toFixed(2)}%` } } },
+      scales:{ x:{grid:{color:GRID_CLR},ticks:{maxTicksLimit:12,font:{size:9}}}, y:{grid:{color:GRID_CLR},ticks:{callback:v=>isSpr?v+' bps':v.toFixed(2)+'%',font:{size:10}}} }
+    }
+  };
+  if (histChart) histChart.destroy();
+  histChart = new Chart(el('histYieldChart'), cfg);
+}
+
+function switchYieldView(view, btn) {
+  document.querySelectorAll('#yieldTabs .tab').forEach(b=>b.classList.remove('active'));
+  btn.classList.add('active');
+  buildHistChart(view);
+}
+
+// ════ MAIN INIT ════
+async function initDashboard() {
+  let d;
+  try {
+    // In production: fetch('./rbi_data.json')
+    // Fallback: use inline data object when file server is unavailable
+    const resp = await fetch('./rbi_data.json');
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    d = await resp.json();
+  } catch (err) {
+    console.warn('Could not load rbi_data.json:', err.message, '— using embedded fallback data.');
+    d = window.__RBI_FALLBACK__;
+  }
+
+  if (!d) { console.error('No data available.'); return; }
+
+  // Validate
+  const validation = validateData(d);
+
+  // Topbar date
+  set('topbar-date', `RBI Data · ${fmtDate(d._meta && d._meta.last_updated)}`);
+
+  // Populate all sections
+  populateKPIs(d);
+  populateInsightBand(d);
+  populateFindings(d);
+  populateRecommendations(d);
+  populateBondTable(d);
+  populateSources(d);
+  populateAuditLog(d, validation);
+  checkStaleness(d);
+
+  // Build all charts
+  buildYieldCurve(d);
+  buildAnnualReturns(d);
+  buildSDLSpread(d);
+  buildTBill(d);
+  buildDevolvement(d);
+  buildDuration(d);
+  buildRiskScenarios(d);
+  _histData = d.historical_yields;
+  buildHistChart('10y');
+}
+
+// ════ EMBEDDED FALLBACK DATA ════
+// This mirrors rbi_data.json exactly — used when the HTML is opened as a
+// standalone file (file://) without a local web server.
+window.__RBI_FALLBACK__ = {"_meta":{"schema_version":"1.0.0","reference_date":"2025-06-30","last_updated":"2025-06-30T00:00:00+05:30","source_label":"RBI DBIE · CCIL · NSO · FBIL · NSE","stale_threshold_days":7,"notes":"All yields in percent (%). All prices per ₹100 face value. Spreads in basis points (bps)."},"audit_log":[{"timestamp":"2025-06-30T00:00:00+05:30","action":"initial_load","source":"RBI DBIE / NSO / CCIL","operator":"manual","changes":"Baseline data populated from audit-corrected dashboard v1.0","validation_status":"passed"}],"policy":{"repo_rate":5.50,"repo_rate_effective_date":"2025-06-06","repo_rate_source":"RBI MPC Statement dated 06-Jun-2025 (prid=60604)","repo_rate_change_bps":-50,"repo_rate_prev":6.00,"fy_label":"FY 2024–25"},"risk_free":{"tenor_days":91,"auction_date":"2025-06-25","cutoff_price":98.6280,"implicit_yield":5.5796,"weighted_average_yield":5.5730,"source":"RBI DBIE – Auctions of 91-Day Government of India Treasury Bills","formula":"((100 - price) / price) × (365 / days) × 100","reconciliation_check":"((100 - 98.6280) / 98.6280) × (365 / 91) × 100 = 5.5796%"},"kpi":{"gsec_10y_yield":6.87,"gsec_10y_label":"Benchmark · GOI 2034 Series","gsec_10y_delta_bps":-18,"gsec_10y_delta_label":"▼ 18 bps from Apr 2025","tbill_91d_yield":5.5796,"tbill_91d_cutoff_price":98.6280,"tbill_91d_auction_date":"2025-06-25","yield_spread_10y_91d_bps":129,"sdl_spread_10y_bps":52,"sdl_spread_delta_bps":6,"cpi_may2025":2.82,"cpi_source":"NSO May-2025 official release","real_yield_10y":4.05,"mod_duration_10y":7.42,"gross_borrowing_fy26_trn":14.82,"gross_borrowing_fy25_trn":15.00},"yield_curve":{"source":"RBI / CCIL","tenors":["91D","182D","364D","2Y","3Y","5Y","7Y","10Y","15Y","20Y","30Y"],"current":{"label":"Jun 2025","yields":[5.58,6.59,6.68,6.72,6.74,6.79,6.83,6.87,6.93,6.98,7.05]},"prior_year":{"label":"Jun 2024","yields":[6.78,6.82,6.89,6.94,6.98,7.08,7.12,7.19,7.23,7.27,7.34]}},"bond_table":{"as_of":"Jun 2025","source":"CCIL","bonds":[{"instrument":"GOI 2025 (91D T-Bill)","tenor":"91 days","coupon":"Disc.","ytm":5.5796,"price":98.63,"mod_duration":0.24,"convexity":0.06,"vs_repo_bps":8},{"instrument":"GOI 2025 (182D T-Bill)","tenor":"182 days","coupon":"Disc.","ytm":6.59,"price":96.85,"mod_duration":0.48,"convexity":0.23,"vs_repo_bps":109},{"instrument":"GOI 2025 (364D T-Bill)","tenor":"364 days","coupon":"Disc.","ytm":6.68,"price":93.75,"mod_duration":0.95,"convexity":0.91,"vs_repo_bps":118},{"instrument":"GOI 2027 (2Y G-Sec)","tenor":"2 years","coupon":6.79,"ytm":6.72,"price":101.12,"mod_duration":1.87,"convexity":3.52,"vs_repo_bps":122},{"instrument":"GOI 2029 (5Y G-Sec)","tenor":"5 years","coupon":7.18,"ytm":6.79,"price":101.74,"mod_duration":4.31,"convexity":21.40,"vs_repo_bps":129},{"instrument":"GOI 2034 (10Y Benchmark)","tenor":"10 years","coupon":7.10,"ytm":6.87,"price":101.64,"mod_duration":7.42,"convexity":66.18,"vs_repo_bps":137},{"instrument":"GOI 2039 (15Y G-Sec)","tenor":"15 years","coupon":7.25,"ytm":6.93,"price":102.34,"mod_duration":10.18,"convexity":121.44,"vs_repo_bps":143},{"instrument":"GOI 2054 (30Y G-Sec)","tenor":"30 years","coupon":7.46,"ytm":7.05,"price":104.55,"mod_duration":16.72,"convexity":334.80,"vs_repo_bps":155}]},"tbill_series":{"source":"RBI DBIE – T-Bill Auction Results","labels":["Jan 24","Feb 24","Mar 24","Apr 24","May 24","Jun 24","Jul 24","Aug 24","Sep 24","Oct 24","Nov 24","Dec 24","Jan 25","Feb 25","Mar 25","Apr 25","May 25","Jun 25"],"tbill_91d":[6.74,6.72,6.76,6.78,6.80,6.82,6.79,6.78,6.76,6.74,6.72,6.70,6.65,6.62,6.40,6.20,5.90,5.58],"tbill_182d":[6.81,6.79,6.83,6.85,6.87,6.89,6.86,6.85,6.83,6.81,6.79,6.77,6.72,6.69,6.65,6.63,6.61,6.59],"tbill_364d":[6.90,6.88,6.92,6.94,6.96,6.98,6.95,6.94,6.92,6.90,6.88,6.86,6.81,6.78,6.74,6.72,6.70,6.68]},"devolvement":{"source":"RBI – Primary Dealer Devolvement Reports","labels":["91D Q1","91D Q2","91D Q3","91D Q4","182D Q1","182D Q2","182D Q3","182D Q4","364D Q1","364D Q2","364D Q3","364D Q4"],"values":[2.1,0.8,1.4,0.5,3.2,1.1,2.0,0.9,4.5,1.8,2.8,1.2]},"sdl_spread_series":{"source":"CCIL / RBI – State Development Loan Auctions","labels":["Jan 24","Feb 24","Mar 24","Apr 24","May 24","Jun 24","Jul 24","Aug 24","Sep 24","Oct 24","Nov 24","Dec 24","Jan 25","Feb 25","Mar 25","Apr 25","May 25","Jun 25"],"spread_bps":[48,46,44,45,47,48,50,49,51,52,53,54,54,55,52,51,52,52]},"annual_returns":{"source":"CCIL / NSE – Bond Index Total Returns","fy_labels":["FY21","FY22","FY23","FY24","FY25"],"gsec_10y":[10.42,1.88,-3.12,7.34,8.65],"sdl_10y":[10.95,2.14,-2.88,7.91,9.12],"tbill":[4.12,4.35,6.82,6.94,6.72]},"duration_analytics":{"source":"CCIL / Computed from bond cash flows","tenors":["91D","182D","364D","2Y","5Y","10Y","15Y","30Y"],"mod_duration":[0.24,0.48,0.95,1.87,4.31,7.42,10.18,16.72],"dv01_per_crore":[240,480,950,1870,4310,7420,10180,16720],"convexity":[0.06,0.23,0.91,3.52,21.40,66.18,121.44,334.80]},"rate_shock":{"source":"Computed: %ΔP = (−Dmod × ΔY + 0.5 × Convexity × ΔY²) × 100","tenors":["2Y","5Y","10Y","15Y","30Y"],"scenarios":{"m200":[3.78,8.84,15.58,21.75,36.78],"m100":[1.89,4.39,7.68,10.68,17.89],"p100":[-1.85,-4.29,-7.35,-10.18,-16.72],"p200":[-3.66,-8.40,-14.38,-19.68,-31.78]}},"historical_yields":{"source":"RBI / CCIL – Monthly Average Secondary Market Yields","labels":["Jan 20","Apr 20","Jul 20","Oct 20","Jan 21","Apr 21","Jul 21","Oct 21","Jan 22","Apr 22","Jul 22","Oct 22","Jan 23","Apr 23","Jul 23","Oct 23","Jan 24","Apr 24","Jul 24","Oct 24","Jan 25","Apr 25","Jun 25"],"gsec_10y":[6.57,6.12,5.88,5.95,5.94,6.10,6.24,6.35,6.58,7.12,7.45,7.42,7.38,7.05,7.18,7.32,7.25,7.19,7.12,7.08,7.02,6.98,6.87],"gsec_5y":[6.22,5.79,5.52,5.61,5.60,5.78,5.91,6.04,6.28,6.85,7.18,7.14,7.10,6.78,6.91,7.05,6.98,6.92,6.85,6.81,6.75,6.71,6.79],"gsec_2y":[5.98,5.45,5.14,5.26,5.25,5.42,5.56,5.68,5.92,6.44,6.82,6.78,6.74,6.42,6.55,6.69,6.62,6.56,6.49,6.61,6.65,6.68,6.72],"spread_2y_10y_bps":[59,67,74,69,69,68,68,67,66,68,63,64,64,63,63,63,63,63,63,47,37,30,15]},"data_sources":[{"id":"rbi_main","name":"Reserve Bank of India","url":"https://www.rbi.org.in","description":"Primary source for monetary policy decisions, auction notifications, and press releases","data_types":["repo_rate","policy_decisions","t_bill_auction_results"]},{"id":"rbi_dbie","name":"RBI DBIE","url":"https://data.rbi.org.in/DBIE/","description":"RBI Database on Indian Economy — 91D/182D/364D T-Bill auction cut-off yields and weighted average yields","data_types":["tbill_auction_results","risk_free_rate","yield_series"]},{"id":"ccil","name":"CCIL","url":"https://www.ccilindia.com","description":"Clearing Corporation of India — secondary market G-Sec & SDL prices, yield curve, and trade data","data_types":["gsec_yields","sdl_spreads","bond_prices","yield_curve"]},{"id":"fbil","name":"FBIL","url":"https://www.fbil.org.in","description":"Financial Benchmarks India — approved benchmark administrator for FBIL-ZCYC and overnight rates","data_types":["zcyc","overnight_mibor","reference_rates"]},{"id":"nse","name":"NSE India","url":"https://www.nseindia.com","description":"National Stock Exchange — exchange-listed bond prices and indices","data_types":["bond_index_returns","listed_bond_prices"]},{"id":"bse","name":"BSE India","url":"https://www.bseindia.com","description":"Bombay Stock Exchange — bond prices and debt market data","data_types":["bond_prices","debt_market_data"]},{"id":"nso","name":"NSO / MoSPI","url":"https://mospi.gov.in","description":"National Statistical Office — official CPI inflation releases","data_types":["cpi_inflation"]}]};
+
+initDashboard();
+</script>
+</body>
+</html>

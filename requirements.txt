@@ -1,0 +1,30 @@
+# ============================================================
+# requirements.txt
+# RBI Treasury Bill Dashboard — Python Dependencies
+# ============================================================
+#
+# Install:
+#   pip install -r requirements.txt
+#
+# Python requirement: >= 3.9
+# Tested on: Python 3.11 (GitHub Actions ubuntu-latest)
+#
+# All versions are pinned to their minor version for
+# reproducibility. Patch updates within the same minor
+# version are safe and accepted by pip automatically.
+# ============================================================
+
+# HTTP requests — core data fetching library
+requests>=2.31.0,<3.0.0
+
+# HTML parsing — for RBI press release and DBIE table scraping
+beautifulsoup4>=4.12.0,<5.0.0
+
+# Faster HTML parser backend for BeautifulSoup (10–50x faster than html.parser)
+# Falls back to html.parser if lxml is unavailable, but lxml is strongly preferred
+lxml>=4.9.0,<6.0.0
+
+# ── Development / local testing (not required for GitHub Actions) ────────────
+# Uncomment to install if running locally:
+# pytest>=7.4.0          # unit test runner
+# pytest-cov>=4.1.0      # coverage reporting

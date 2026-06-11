@@ -1,0 +1,52 @@
+# ============================================================
+# .gitignore — RBI Treasury Bill Dashboard
+# ============================================================
+
+# ── Python ──────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg
+*.egg-info/
+dist/
+build/
+.eggs/
+pip-log.txt
+
+# ── Virtual environments ─────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+.env
+
+# ── Backup files (written by refresh script — never commit) ──
+rbi_data.backup.json
+*.backup.json
+*.backup
+
+# ── Temporary files (created during atomic writes) ────────────
+*.tmp
+.rbi_*
+
+# ── Log files ─────────────────────────────────────────────────
+*.log
+refresh.log
+debug.log
+
+# ── IDE / editor files ────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Test output ───────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml

@@ -1,0 +1,263 @@
+# ============================================================================
+# .github/workflows/rbi-auto-update.yml
+#
+# RBI Treasury Bill Dashboard — Autonomous Data Refresh Workflow
+# Author  : Javvaji Venkatesh
+# Version : 3.0.0
+#
+# SCHEDULE:
+#   • Every day at 07:30 IST  (02:00 UTC)   — daily heartbeat / stale check
+#   • Every Wednesday at 14:30 IST (09:00 UTC) — post-auction update
+#     (RBI conducts T-Bill auctions on Wednesdays; results published ~14:00 IST)
+#   • Manual dispatch via GitHub Actions UI or GitHub CLI
+#
+# SAFETY GUARANTEES:
+#   • If the Python script exits non-zero → workflow fails visibly; JSON untouched
+#   • If JSON content is unchanged → no commit is made (prevents empty commits)
+#   • Backup file (rbi_data.backup.json) is never committed to the repo
+#   • All secrets (GITHUB_TOKEN) are handled by GitHub automatically — no setup needed
+#
+# REQUIRED REPOSITORY SETTINGS:
+#   Settings → Actions → General → Workflow permissions → Read and write permissions ✓
+# ============================================================================
+
+name: RBI Data Auto-Update
+
+on:
+  # ── Daily heartbeat: 07:30 IST = 02:00 UTC ──────────────────────────────────
+  schedule:
+    - cron: '0 2 * * *'          # Daily at 02:00 UTC (07:30 IST)
+    - cron: '0 9 * * 3'          # Wednesdays at 09:00 UTC (14:30 IST) — post-auction
+
+  # ── Manual trigger from GitHub Actions UI ───────────────────────────────────
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'Dry run — fetch data but do NOT write or commit JSON'
+        required: false
+        default: 'false'
+        type: boolean
+      force:
+        description: 'Force update — bypass spike guard warnings'
+        required: false
+        default: 'false'
+        type: boolean
+      log_level:
+        description: 'Logging verbosity'
+        required: false
+        default: 'INFO'
+        type: choice
+        options:
+          - INFO
+          - DEBUG
+
+# Cancel any in-progress run if a new one is triggered (prevents race conditions)
+concurrency:
+  group: rbi-data-update
+  cancel-in-progress: false   # Do NOT cancel; let the current run finish cleanly
+
+jobs:
+  refresh-rbi-data:
+    name: Refresh RBI T-Bill Data
+    runs-on: ubuntu-latest
+
+    # ── Timeout: kill job if it hangs (e.g. RBI website unresponsive) ──────────
+    timeout-minutes: 15
+
+    # ── Permissions: only what is needed ───────────────────────────────────────
+    permissions:
+      contents: write   # Required: commit and push rbi_data.json
+
+    steps:
+
+      # ── 1. Check out the repository ──────────────────────────────────────────
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          # Fetch full history so git diff and git log work correctly
+          fetch-depth: 2
+          # Use the built-in GITHUB_TOKEN for authentication
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # ── 2. Set up Python ─────────────────────────────────────────────────────
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          # Cache pip dependencies to speed up subsequent runs
+          cache: 'pip'
+          cache-dependency-path: 'requirements.txt'
+
+      # ── 3. Install dependencies ───────────────────────────────────────────────
+      - name: Install Python dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      # ── 4. Capture pre-run JSON state for change detection ───────────────────
+      - name: Capture pre-run JSON checksum
+        id: pre_checksum
+        run: |
+          if [ -f rbi_data.json ]; then
+            echo "checksum=$(sha256sum rbi_data.json | awk '{print $1}')" >> $GITHUB_OUTPUT
+            echo "Pre-run checksum: $(sha256sum rbi_data.json | awk '{print $1}')"
+          else
+            echo "checksum=none" >> $GITHUB_OUTPUT
+            echo "rbi_data.json does not exist yet — will be created."
+          fi
+
+      # ── 5. Run the data refresh script ───────────────────────────────────────
+      - name: Run refresh_rbi_data.py
+        id: refresh
+        env:
+          # Pass manual dispatch options as environment variables
+          RBI_DRY_RUN:   ${{ github.event.inputs.dry_run || 'false' }}
+          RBI_FORCE:     ${{ github.event.inputs.force || 'false' }}
+          RBI_LOG_LEVEL: ${{ github.event.inputs.log_level || 'INFO' }}
+          # IST timezone context for logging
+          TZ: Asia/Kolkata
+        run: |
+          # Build CLI arguments from workflow inputs
+          ARGS="--json-path rbi_data.json"
+
+          if [ "$RBI_DRY_RUN" = "true" ]; then
+            ARGS="$ARGS --dry-run"
+            echo "Mode: DRY RUN — no files will be written"
+          fi
+
+          if [ "$RBI_FORCE" = "true" ]; then
+            ARGS="$ARGS --force"
+            echo "Mode: FORCE — spike guard bypassed"
+          fi
+
+          if [ "$RBI_LOG_LEVEL" = "DEBUG" ]; then
+            ARGS="$ARGS --verbose"
+          fi
+
+          echo "Executing: python refresh_rbi_data.py $ARGS"
+          echo "Timestamp (IST): $(TZ=Asia/Kolkata date)"
+          echo "---"
+
+          # Run the script; non-zero exit code fails the workflow step
+          python refresh_rbi_data.py $ARGS
+
+      # ── 6. Detect whether JSON actually changed ───────────────────────────────
+      - name: Detect JSON changes
+        id: detect_changes
+        run: |
+          DRY_RUN="${{ github.event.inputs.dry_run || 'false' }}"
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "Dry run — skipping change detection."
+            exit 0
+          fi
+
+          if [ ! -f rbi_data.json ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "rbi_data.json not found — nothing to commit."
+            exit 0
+          fi
+
+          NEW_CHECKSUM=$(sha256sum rbi_data.json | awk '{print $1}')
+          OLD_CHECKSUM="${{ steps.pre_checksum.outputs.checksum }}"
+
+          echo "Pre-run checksum : $OLD_CHECKSUM"
+          echo "Post-run checksum: $NEW_CHECKSUM"
+
+          if [ "$NEW_CHECKSUM" = "$OLD_CHECKSUM" ]; then
+            echo "changed=false" >> $GITHUB_OUTPUT
+            echo "No change in rbi_data.json — commit skipped."
+          else
+            echo "changed=true" >> $GITHUB_OUTPUT
+            echo "rbi_data.json has changed — will commit."
+          fi
+
+      # ── 7. Remove backup file (never commit it to the repo) ─────────────────
+      - name: Remove backup file before commit
+        if: steps.detect_changes.outputs.changed == 'true'
+        run: |
+          # The Python script writes a .backup.json for local safety.
+          # We deliberately exclude it from commits.
+          if [ -f rbi_data.backup.json ]; then
+            rm rbi_data.backup.json
+            echo "Removed rbi_data.backup.json (not committed to repo)"
+          fi
+
+      # ── 8. Commit and push updated JSON ──────────────────────────────────────
+      - name: Commit and push rbi_data.json
+        if: steps.detect_changes.outputs.changed == 'true'
+        run: |
+          # Configure git identity for the automated commit
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          # Stage only the JSON data file — never stage the backup or logs
+          git add rbi_data.json
+
+          # Build a descriptive commit message with useful context
+          TIMESTAMP=$(TZ=Asia/Kolkata date '+%Y-%m-%d %H:%M IST')
+          TRIGGER="${{ github.event_name }}"
+          YIELD=$(python -c "
+          import json
+          try:
+              with open('rbi_data.json') as f:
+                  d = json.load(f)
+              y = d.get('risk_free', {}).get('implicit_yield', 'N/A')
+              p = d.get('risk_free', {}).get('cutoff_price', 'N/A')
+              a = d.get('risk_free', {}).get('auction_date', 'N/A')
+              print(f'91D yield={y}% price={p} auction={a}')
+          except Exception as e:
+              print(f'(could not parse: {e})')
+          " 2>/dev/null || echo "(yield unavailable)")
+
+          COMMIT_MSG="chore(data): auto-refresh RBI T-Bill data [${TIMESTAMP}]
+
+          Trigger  : ${TRIGGER}
+          Updated  : ${YIELD}
+          Workflow : ${{ github.workflow }} #${{ github.run_number }}
+          Runner   : ${{ runner.os }} / ubuntu-latest
+
+          [skip ci]"
+
+          git commit -m "$COMMIT_MSG"
+
+          # Push to the branch that triggered this workflow
+          git push origin HEAD:${{ github.ref_name }}
+
+          echo "Successfully committed and pushed updated rbi_data.json"
+
+      # ── 9. Summary output ─────────────────────────────────────────────────────
+      - name: Job summary
+        if: always()
+        run: |
+          echo "## RBI Data Refresh Summary" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "| Field | Value |" >> $GITHUB_STEP_SUMMARY
+          echo "|---|---|" >> $GITHUB_STEP_SUMMARY
+          echo "| Trigger | ${{ github.event_name }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Run number | #${{ github.run_number }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp (UTC) | $(date -u) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Timestamp (IST) | $(TZ=Asia/Kolkata date) |" >> $GITHUB_STEP_SUMMARY
+          echo "| Data changed | ${{ steps.detect_changes.outputs.changed || 'N/A' }} |" >> $GITHUB_STEP_SUMMARY
+          echo "| Dry run | ${{ github.event.inputs.dry_run || 'false' }} |" >> $GITHUB_STEP_SUMMARY
+
+          if [ -f rbi_data.json ]; then
+            python -c "
+          import json, sys
+          try:
+              with open('rbi_data.json') as f:
+                  d = json.load(f)
+              rf = d.get('risk_free', {})
+              kpi = d.get('kpi', {})
+              meta = d.get('_meta', {})
+              print(f\"| 91D Yield | {rf.get('implicit_yield','N/A')}% |\")
+              print(f\"| 91D Price | {rf.get('cutoff_price','N/A')} |\")
+              print(f\"| Auction Date | {rf.get('auction_date','N/A')} |\")
+              print(f\"| 10Y G-Sec Yield | {kpi.get('gsec_10y_yield','N/A')}% |\")
+              print(f\"| Repo Rate | {d.get('policy',{}).get('repo_rate','N/A')}% |\")
+              print(f\"| JSON Last Updated | {meta.get('last_updated','N/A')} |\")
+          except Exception as e:
+              print(f'| JSON parse error | {e} |')
+            " >> $GITHUB_STEP_SUMMARY
+          fi

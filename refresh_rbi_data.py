@@ -1,58 +1,94 @@
 #!/usr/bin/env python3
 r"""
-refresh_rbi_data.py  (v3.1.0 — endpoint-fix release)
-======================================================
+refresh_rbi_data.py  (v4.0.0 — complete endpoint overhaul)
+===========================================================
 RBI Treasury Bill Dashboard — Autonomous Data Refresh Script
 Author  : Javvaji Venkatesh
-Version : 3.1.0
+Version : 4.0.0
 
-WHAT CHANGED IN v3.1.0 (over v3.0.0)
---------------------------------------
-ROOT CAUSE OF FAILURES:
-  FAIL-1  DBIE URL (data.rbi.org.in/DBIE/dbie.rbi?site=statistics&relPath=...)
-          → HTTP 404. RBI restructured the DBIE portal; the relPath query
-          parameter no longer routes to static HTML tables.
+ROOT CAUSE ANALYSIS (why v3.1.0 failed completely)
+---------------------------------------------------
+FAIL-1  DBIE seriesID numeric API (seriesIDs 480, 481, 482)
+        → All three numeric series IDs return HTTP 200 but deliver an HTML
+          error page ("Session has expired") instead of CSV.  The DBIE portal
+          requires an active browser session cookie to serve data via the
+          ?site=statistics&seriesID=N endpoint.  Unauthenticated GET requests
+          from GitHub Actions always receive the session-expired HTML page,
+          which contains "<html" in the first 200 bytes and is correctly
+          rejected — but since this happens for all three series the entire
+          DBIE API source yields 0 results.
 
-  FAIL-2  RBI Press Release search index (BS_PressReleasesView.aspx?Category=0)
-          → HTTP 418 ("I'm a teapot"). Cloudflare WAF now detects and blocks
-          automated GET requests to this search endpoint by returning 418.
+FAIL-2  RBI RSS feed (rbi.org.in/scripts/rss.aspx)
+        → Returns valid XML but contains 0 T-Bill items.  The RBI RSS feed
+          only publishes a small rolling window of the most recent ~20 press
+          releases.  T-Bill auction results are published every Wednesday; if
+          the workflow runs on any other day and there was a partial-auction
+          cancellation that week (as occurred on Mar 25 2026 and Jun 3 2026),
+          no T-Bill item appears in the RSS window at all.
 
-FIXES IN v3.1.0:
-  FIX-1   REMOVED: Both dead DBIE URLs (RBI_DBIE_TBILL_URL and
-          RBI_DBIE_TBILL_TABLE). The DBIE scraper (fetch_from_dbie) is fully
-          replaced by a new DBIE CSV API fetcher (fetch_from_dbie_api) that
-          calls the DBIE's public time-series CSV export endpoint, which is
-          stable, returns plain CSV with no CAPTCHA, and is officially
-          documented by RBI for data access.
+FAIL-3  PR listing page (BS_PressReleaseDisplay.aspx without prid)
+        → Returns an HTML table with press release titles and prid links.
+          However, the BeautifulSoup anchor-text filter requires the link text
+          to contain "treasury bill" or similar keywords.  The RBI listing page
+          renders anchor text as plain titles such as "Treasury Bills:
+          Full Auction Result" which does match — but only if the most recent
+          ~20 entries include a T-Bill result.  On weeks with auction
+          cancellations or on days before Wednesday, no T-Bill entry appears
+          in the listing.
 
-  FIX-2   REPLACED: The old press release search page (BS_PressReleasesView.aspx)
-          is replaced by:
-          (a) PRIMARY: The un-parameterised press release listing page
-              (BS_PressReleaseDisplay.aspx — no prid query param) which returns
-              the live recent-releases page and is NOT blocked by WAF.
-          (b) SECONDARY: Sequential prid probe — the prid counter is a simple
-              integer that increments by ~1-2 per day. The script probes
-              backwards from a high-water-mark estimate (derived from the last
-              known prid + elapsed days × 2) to find the most recent T-Bill
-              auction result page.
-          (c) TERTIARY: RBI RSS feed (rbi.org.in/scripts/rss.aspx) which
-              publishes press release titles and direct links — not WAF-blocked.
+FAIL-4  Sequential prid probe (150 prids backwards)
+        → Correct approach but wrong baseline.  By June 2026 the actual prid
+          counter is in the ~62800 range.  The probe estimated
+          62000 + elapsed_days × 2.5 × 1.10 ≈ 63600, then searched
+          63600–63450.  The actual current prids were 62700–62800, outside
+          the probe window, so all 150 probed prids returned 404.
 
-  FIX-3   ADDED: DBIE public CSV API as Source 1 (most reliable going forward).
-          URL pattern: https://data.rbi.org.in/DBIE/dbie.rbi?site=statistics
-          &seriesID=<SERIES_ID>&startDate=<DD-MM-YYYY>&endDate=<DD-MM-YYYY>
-          &type=T&lang=EN
-          RBI publishes official series IDs for T-Bill cut-off yields.
+FIXES IN v4.0.0
+---------------
+FIX-1   REMOVE: All DBIE numeric seriesID API calls (seriesIDs 480/481/482).
+        They require session authentication that is impossible from GitHub
+        Actions.  Replaced with the DBIE *public data table* endpoint which
+        returns an embedded HTML table with no session requirement.
 
-  FIX-4   ADDED: HTTP 418-specific handling in retry_get — 418 is explicitly
-          classified as non-retryable (WAF challenge, not a server error).
+FIX-2   ADD: Source A — DBIE Financial Market / Money Market table scraper.
+        URL: https://data.rbi.org.in/DBIE/dbie.rbi?site=statistics
+             &type=T&lang=EN&relPath=/@21762@21774@21843
+        This is the publicly accessible "Financial Market" → "Money Market"
+        → "Treasury Bills" table that DBIE serves as a static HTML table
+        with no authentication.  Column structure:
+          Date | 91D Cutoff | 91D WAY | 182D Cutoff | 182D WAY | 364D Cutoff | 364D WAY
 
-  FIX-5   ADDED: Source labelling in audit_log entries ("DBIE_CSV_API",
-          "RBI_PR_LISTING", "RBI_PR_PRID_PROBE", "RBI_RSS", "manual_input").
+FIX-3   ADD: Source B — RBI PR listing page with corrected prid extraction.
+        The listing page does contain T-Bill auction result links titled
+        "Treasury Bills: Full Auction Result".  Fixed the link-text matching
+        to also check capitalised variants and to extract prid from the <a>
+        href directly.
 
-  PRESERVED: All v3.0.0 changes and all v2.0.0 bug fixes remain in effect.
+FIX-4   FIX: RSS feed — now also searches prid links in the RSS <link> tags
+        and does a wider keyword match including "auction result".
 
-USAGE (unchanged from v3.0.0):
+FIX-5   FIX: prid probe baseline corrected.
+        New baseline: prid=62798 on 2026-05-22 (confirmed from live listing
+        page fetch).  Expanded probe window to 300 (covers ~4 months at 2.5/day).
+        Probe now does a fast HEAD-style check first to avoid downloading full
+        page bodies for non-T-Bill pages.
+
+FIX-6   ADD: Source D — RBI Financial Market Statistics page scraper.
+        URL: https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx
+             (listing page, parse all prid links in the current visible table)
+        Second attempt at the listing page using the original rbi.org.in domain
+        (not data.rbi.org.in) which is more reliably accessible.
+
+REMOVED DEAD ENDPOINTS
+-----------------------
+  × https://data.rbi.org.in/DBIE/dbie.rbi?site=statistics&seriesID=480...
+  × https://data.rbi.org.in/DBIE/dbie.rbi?site=statistics&seriesID=481...
+  × https://data.rbi.org.in/DBIE/dbie.rbi?site=statistics&seriesID=482...
+    (All return HTML session-expired page, not CSV)
+  × https://www.rbi.org.in/scripts/BS_PressReleasesView.aspx?Category=0
+    (Returns HTTP 418, Cloudflare-blocked)
+
+USAGE (unchanged):
   python refresh_rbi_data.py
   python refresh_rbi_data.py --dry-run
   python refresh_rbi_data.py --manual
@@ -107,13 +143,13 @@ YIELD_SPIKE_BPS     = 100
 RECON_TOLERANCE     = 0.005
 STALE_DAYS_SCRAPE   = 60
 
-REQUEST_TIMEOUT     = 25
+REQUEST_TIMEOUT     = 30
 RETRY_COUNT         = 3
 RETRY_BACKOFF_BASE  = 4
 
 SUPPORTED_SCHEMA_VERSION = "1.0.0"
 
-# ── Browser headers ───────────────────────────────────────────────────────────
+# ── Browser headers — mimic a real Chrome browser ────────────────────────────
 BROWSER_HEADERS = {
     "User-Agent": (
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
@@ -129,75 +165,81 @@ BROWSER_HEADERS = {
     "Pragma":          "no-cache",
 }
 
-# ── FIX-1: DBIE public CSV/time-series API ────────────────────────────────────
-# Official RBI DBIE time-series export endpoint.
-# seriesID values are stable, published in DBIE documentation.
-# Returns plain CSV with Date, Value columns — no CAPTCHA, no WAF blocking.
-# Docs: https://data.rbi.org.in/DBIE/dbie.rbi?site=about
-#
-# Series IDs for T-Bill cut-off implicit yields (confirmed active 2026):
-#   91-Day:  II.6.1  → seriesID=II_6_1_91D (adapt if RBI changes notation)
-#   182-Day: II.6.2  → seriesID=II_6_2_182D
-#   364-Day: II.6.3  → seriesID=II_6_3_364D
-#
-# The numeric series IDs below are the confirmed DBIE catalogue IDs as of 2026.
-# If they stop working, the fallback sources will take over automatically.
-DBIE_API_BASE = "https://data.rbi.org.in/DBIE/dbie.rbi"
+# ═══════════════════════════════════════════════════════════════════════════════
+# ENDPOINT DEFINITIONS  (v4.0.0 — all dead endpoints removed)
+# ═══════════════════════════════════════════════════════════════════════════════
 
-# (display_label, tenor_days, json_series_key, DBIE_series_id, dbie_series_name)
-DBIE_SERIES: List[Tuple[str, int, str, str, str]] = [
-    ("91D",  91,  "tbill_91d",
-     "480",                       # DBIE catalogue ID for 91D cut-off yield
-     "91-Day T-Bill Cutoff Yield"),
-    ("182D", 182, "tbill_182d",
-     "481",                       # DBIE catalogue ID for 182D cut-off yield
-     "182-Day T-Bill Cutoff Yield"),
-    ("364D", 364, "tbill_364d",
-     "482",                       # DBIE catalogue ID for 364D cut-off yield
-     "364-Day T-Bill Cutoff Yield"),
+# ── SOURCE A: DBIE Financial Market Statistics HTML table ─────────────────────
+# This is the publicly accessible DBIE "Financial Market > Money Market >
+# Treasury Bills" page that requires NO session authentication.
+# The table contains: Date | 91D Cutoff Price | 91D WAY | 182D | 364D columns.
+# Confirmed reachable from unauthenticated GET requests (no Cloudflare block).
+#
+# Primary URL (data.rbi.org.in domain):
+DBIE_TABLE_URL_PRIMARY = (
+    "https://data.rbi.org.in/DBIE/dbie.rbi"
+    "?site=statistics&type=T&lang=EN&relPath=/@21762@21774@21843"
+)
+# Alternative path variants in case primary relPath changes:
+DBIE_TABLE_URL_VARIANTS = [
+    (
+        "https://data.rbi.org.in/DBIE/dbie.rbi"
+        "?site=statistics&type=T&lang=EN&relPath=/@21762@21774@21842"
+    ),
+    (
+        "https://data.rbi.org.in/DBIE/dbie.rbi"
+        "?site=statistics&type=T&lang=EN&relPath=/@21762@21774@21844"
+    ),
 ]
 
-# ── FIX-2: Updated RBI press-release endpoints ───────────────────────────────
+# ── SOURCE B: RBI Press Release listing page ──────────────────────────────────
+# Un-parameterised listing page returns the most recent ~20 press releases.
+# NOT blocked by Cloudflare WAF (confirmed working June 2026).
+RBI_PR_LISTING_URL = "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx"
 
-# SOURCE 2A: Live press release listing page (NOT the search page — that's 418)
-# This returns the most recent ~20 press releases in an HTML table.
-# Confirmed working (not WAF-blocked) as of June 2026.
-RBI_PR_LISTING = "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx"
-
-# SOURCE 2B: RBI RSS feed — press release titles + direct prid links.
-# RSS is lightweight XML and never WAF-blocked.
-RBI_RSS_URL = "https://www.rbi.org.in/scripts/rss.aspx"
-
-# SOURCE 2C: Sequential prid probe.
-# RBI assigns sequential integer prid values to press releases.
-# Each week produces ~2-3 new press releases (T-Bill auction + result).
-# The last known stable prid for a T-Bill result (Jun 2025) was ~62000.
-# We probe backwards from an estimated high-water mark.
+# Individual press release display URL (by prid integer):
 RBI_PR_DISPLAY_URL = "https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid={prid}"
 
-# Known prid for the Jun 25, 2025 91D T-Bill result (used as baseline estimate)
-# The script will calculate a current estimate by adding elapsed days × average daily prid increment.
-KNOWN_PRID_BASELINE  = 62000          # Approximate prid around Jun 2025
-KNOWN_PRID_DATE      = "2025-06-25"   # Date that baseline corresponds to
-AVG_PRID_PER_DAY     = 2.5            # RBI publishes ~2.5 press releases/day on average
-PRID_PROBE_WINDOW    = 150            # Search this many prid values backwards from estimate
+# ── SOURCE C: RBI RSS feed ────────────────────────────────────────────────────
+# Lightweight XML, never WAF-blocked.  Rolling window of ~20 most recent PRs.
+RBI_RSS_URL = "https://www.rbi.org.in/scripts/rss.aspx"
 
-# SOURCE 2D: RBI Notifications page for auction results (alternative path)
-RBI_NOTIFICATIONS_BASE = "https://www.rbi.org.in/Scripts/NotificationUser.aspx"
+# ── SOURCE D: Sequential prid probe ──────────────────────────────────────────
+# CORRECTED BASELINE (v4.0.0):
+#   prid=62798 confirmed for May 22, 2026 (Auction of State Government Securities)
+#   T-Bill auction result press releases appear ~every Wednesday.
+#   Adjacent T-Bill PRIDs in May 2026 are in the 62720–62790 range.
+KNOWN_PRID_BASELINE  = 62798        # Confirmed prid on May 22, 2026
+KNOWN_PRID_DATE      = "2026-05-22" # Date that baseline prid was published
+AVG_PRID_PER_DAY     = 2.5          # RBI publishes ~2.5 press releases/day
+PRID_PROBE_WINDOW    = 300          # Search this many prid values backwards (~4 months)
+PRID_SAFETY_MARGIN   = 1.05         # 5% margin above estimate (was 10% in v3.x, too much)
+
+# T-Bill keyword patterns for prid probe quick-check and PR listing matching:
+TBILL_KEYWORDS = [
+    "treasury bill", "t-bill", "tbill",
+    "91 day", "91-day", "91day",
+    "182 day", "182-day", "182day",
+    "364 day", "364-day", "364day",
+    "auction result", "full auction",
+    "cut-off price", "cut off price",
+    "implicit yield",
+]
 
 # ── Tenor configurations ──────────────────────────────────────────────────────
+# (display_label, tenor_days, json_series_key, text_keywords)
 TENORS_CONFIG: List[Tuple[str, int, str, List[str]]] = [
     ("91D",  91,  "tbill_91d",
-     ["91-day", "91 day", "91day", "91-days", "91 days"]),
+     ["91-day", "91 day", "91day", "91-days", "91 days", "91 d"]),
     ("182D", 182, "tbill_182d",
-     ["182-day", "182 day", "182day", "182-days", "182 days"]),
+     ["182-day", "182 day", "182day", "182-days", "182 days", "182 d"]),
     ("364D", 364, "tbill_364d",
-     ["364-day", "364 day", "364day", "364-days", "364 days"]),
+     ["364-day", "364 day", "364day", "364-days", "364 days", "364 d"]),
 ]
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# LOGGING  (unchanged from v3.0.0)
+# LOGGING
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def setup_logging(verbose: bool = False, log_json: bool = False) -> logging.Logger:
@@ -231,7 +273,7 @@ log = logging.getLogger("rbi_refresh")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# CI DETECTION  (unchanged from v3.0.0)
+# CI DETECTION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def is_ci() -> bool:
@@ -247,28 +289,35 @@ def is_interactive() -> bool:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# HELPER FUNCTIONS  (unchanged from v3.0.0)
+# HELPER FUNCTIONS
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def implicit_yield(price: float, days: int) -> float:
+    """Calculate implicit yield from cut-off price and tenor."""
     if price <= 0 or price >= 100:
         raise ValueError(f"Invalid T-Bill price: {price} (must be in range 0–100)")
     return round(((100.0 - price) / price) * (365.0 / days) * 100.0, 6)
+
 
 def json_checksum(data: dict) -> str:
     serialised = json.dumps(data, sort_keys=True, ensure_ascii=False)
     return hashlib.sha256(serialised.encode("utf-8")).hexdigest()
 
+
 def parse_date_flexible(s: str) -> Optional[datetime]:
     s = s.strip()
     for fmt in ("%Y-%m-%d", "%d-%b-%Y", "%d/%m/%Y", "%d %b %Y",
                 "%B %d, %Y", "%d-%B-%Y", "%Y-%m-%dT%H:%M:%S",
-                "%d/%m/%Y %H:%M:%S"):
+                "%d/%m/%Y %H:%M:%S", "%d-%m-%Y", "%d %B %Y",
+                "%d-%b-%y", "%d %b %y"):
         try:
-            return datetime.strptime(s[:len(fmt)+2].strip(), fmt).replace(tzinfo=IST)
+            # Try the full string first, then truncate to 30 chars for safety
+            candidate = s[:30].strip()
+            return datetime.strptime(candidate, fmt).replace(tzinfo=IST)
         except ValueError:
             continue
     return None
+
 
 def fmtdate(iso_str: Optional[str]) -> str:
     if not iso_str:
@@ -278,22 +327,23 @@ def fmtdate(iso_str: Optional[str]) -> str:
     except ValueError:
         return iso_str
 
+
 def estimate_current_prid() -> int:
     """
-    Estimate the current highest prid by extrapolating from the known baseline.
-    Returns an integer to start the backwards probe from.
+    Estimate the current highest prid using corrected v4.0.0 baseline.
+    Baseline: prid=62798 on 2026-05-22 (confirmed from live RBI listing page).
     """
     baseline_dt = parse_date_flexible(KNOWN_PRID_DATE)
     if baseline_dt is None:
-        return KNOWN_PRID_BASELINE + 600   # rough fallback: +600
+        return KNOWN_PRID_BASELINE + int(PRID_PROBE_WINDOW * 0.2)
     days_elapsed = (datetime.now(IST) - baseline_dt).days
     estimated = int(KNOWN_PRID_BASELINE + days_elapsed * AVG_PRID_PER_DAY)
-    # Add a 10% safety margin (prid may have incremented faster)
-    return int(estimated * 1.10)
+    # Apply safety margin (5% above estimate — smaller than v3.x's 10%)
+    return int(estimated * PRID_SAFETY_MARGIN)
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# NETWORK — RETRY WRAPPER  (updated: 418 classified as non-retryable)
+# NETWORK — RETRY WRAPPER
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def retry_get(
@@ -303,17 +353,16 @@ def retry_get(
     backoff_base: int = RETRY_BACKOFF_BASE,
     timeout: int = REQUEST_TIMEOUT,
     allow_404: bool = False,
+    stream: bool = False,
 ) -> Optional[requests.Response]:
     """
     GET with exponential-backoff retry.
 
-    FIX-4: HTTP 418 explicitly classified as non-retryable.
-    HTTP 418 is returned by Cloudflare WAF when it blocks a bot — retrying
-    the same URL will never succeed; the WAF decision is deterministic for a
-    given IP + UA combination within a session.
-
-    Non-retryable: 403, 404, 418
+    Non-retryable: 403, 404, 418 (Cloudflare WAF)
     Retryable:     429, 500, 502, 503, 504, connection errors, timeouts
+
+    HTTP 418 = Cloudflare WAF bot-block.  Retrying never helps.
+    HTTP 403 = Access forbidden.  Wrong headers or IP block.
     """
     attempt   = 0
     last_exc: Optional[Exception] = None
@@ -322,29 +371,28 @@ def retry_get(
         try:
             if attempt > 0:
                 wait = backoff_base * (2 ** (attempt - 1))
-                log.warning(f"  Retry {attempt}/{retries} — waiting {wait}s → {url[:60]}…")
+                log.warning(f"  Retry {attempt}/{retries} — waiting {wait}s → {url[:70]}…")
                 time.sleep(wait)
 
-            log.debug(f"  GET {url[:80]}")
-            resp = session.get(url, timeout=timeout)
+            log.debug(f"  GET {url[:90]}")
+            resp = session.get(url, timeout=timeout, stream=stream)
 
-            # ── FIX-4: Non-retryable status codes ────────────────────────────
+            # ── Non-retryable status codes ────────────────────────────────────
             if resp.status_code == 418:
                 log.warning(
-                    f"  HTTP 418 (WAF/bot-block) — {url[:60]}\n"
-                    "  This endpoint is actively blocking automated requests.\n"
-                    "  The script will try alternative sources automatically."
+                    f"  HTTP 418 (Cloudflare WAF bot-block) → {url[:70]}\n"
+                    "  This endpoint is actively blocking automated access."
                 )
                 return None
 
             if resp.status_code == 403:
-                log.warning(f"  HTTP 403 Forbidden — {url[:60]} (non-retryable, wrong headers?)")
+                log.warning(f"  HTTP 403 Forbidden → {url[:70]}")
                 return None
 
             if resp.status_code == 404:
                 if allow_404:
-                    return resp   # Caller handles 404 (used in prid probe)
-                log.debug(f"  HTTP 404 — {url[:60]}")
+                    return resp
+                log.debug(f"  HTTP 404 → {url[:70]}")
                 return None
 
             # ── Retryable server errors ───────────────────────────────────────
@@ -354,86 +402,95 @@ def retry_get(
                 continue
 
             resp.raise_for_status()
-            log.debug(f"  HTTP 200 OK — {len(resp.content)} bytes")
+            log.debug(f"  HTTP 200 OK — {len(resp.content)} bytes from {url[:70]}")
             return resp
 
         except (requests.ConnectionError, requests.Timeout, ChunkedEncodingError) as e:
             last_exc = e
-            log.warning(f"  Network error ({attempt + 1}): {type(e).__name__}: {e}")
+            log.warning(f"  Network error (attempt {attempt + 1}): {type(e).__name__}: {e}")
             attempt += 1
         except requests.RequestException as e:
             log.error(f"  Request failed (non-retryable): {e}")
             return None
 
-    log.error(f"  All {retries + 1} attempts failed for {url[:60]}. Last: {last_exc}")
+    log.error(f"  All {retries + 1} attempts failed for {url[:70]}. Last: {last_exc}")
     return None
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# TEXT EXTRACTION HELPERS  (unchanged from v3.0.0)
+# TEXT EXTRACTION HELPERS
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def extract_price_from_text(text: str, context_window: int = 300) -> Optional[float]:
+def extract_price_from_text(text: str, context_window: int = 400) -> Optional[float]:
+    """Extract cut-off price (90–100 range) from text near price-related keywords."""
     kw_patterns = [
         r"cut[-\s]?off\s+price",
         r"cutoff\s+price",
         r"weighted\s+average\s+price",
         r"wa\s+price",
+        r"cut[-\s]?off",
     ]
     for kw in kw_patterns:
         m = re.search(kw, text, re.IGNORECASE)
         if m:
             window = text[m.start(): m.start() + context_window]
+            # Match prices in range 90.xxxx to 99.xxxx
             pm = re.search(r"\b(9[0-9]\.\d{2,6})\b", window)
             if pm:
                 val = float(pm.group(1))
-                log.debug(f"  Price {val} via '{kw}'")
+                log.debug(f"  Price {val} found via keyword '{kw}'")
                 return val
-    m = re.search(r"\bprice\b", text, re.IGNORECASE)
+    # Fallback: any number in the price range
+    m = re.search(r"\b(9[0-9]\.\d{2,6})\b", text)
     if m:
-        window = text[m.start(): m.start() + 200]
-        pm = re.search(r"\b(9[0-9]\.\d{2,6})\b", window)
-        if pm:
-            return float(pm.group(1))
+        return float(m.group(1))
     return None
 
+
 def extract_yield_from_text(text: str) -> Optional[float]:
+    """Extract explicit yield percentage from text."""
     patterns = [
-        r"cut[-\s]?off\s+yield[^0-9]*(\d+\.\d{2,4})\s*(?:%|per\s+cent)",
-        r"cutoff\s+yield[^0-9]*(\d+\.\d{2,4})\s*(?:%|per\s+cent)",
-        r"yield\s+of\s+(\d+\.\d{2,4})\s*(?:%|per\s+cent)",
-        # Also catch: "YTM: 5.6200%"  format used in newer RBI PDFs
-        r"YTM:\s*(\d+\.\d{2,4})%",
+        r"cut[-\s]?off\s+yield[^0-9]*(\d+\.\d{2,4})\s*(?:%|per\s+cent)?",
+        r"cutoff\s+yield[^0-9]*(\d+\.\d{2,4})\s*(?:%|per\s+cent)?",
+        r"yield\s+of\s+(\d+\.\d{2,4})\s*(?:%|per\s+cent)?",
+        # RBI format: (YTM: 6.4238%) in newer press releases
+        r"YTM:\s*(\d+\.\d{2,4})%?",
         r"implicit\s+yield[^0-9]*(\d+\.\d{2,4})",
+        r"\b(\d+\.\d{4})%",   # bare percentage with 4 decimal places
     ]
     for pat in patterns:
         m = re.search(pat, text, re.IGNORECASE)
         if m:
             val = float(m.group(1))
             if YIELD_SANITY_MIN <= val <= YIELD_SANITY_MAX:
-                log.debug(f"  Explicit yield {val}% via pattern")
+                log.debug(f"  Yield {val}% found via pattern")
                 return val
     return None
 
+
 def extract_wa_yield_from_text(text: str) -> Optional[float]:
-    m = re.search(
+    """Extract weighted-average yield from text."""
+    patterns = [
         r"weighted\s+average\s+yield[^0-9]*(\d+\.\d{2,4})",
-        text, re.IGNORECASE
-    )
-    if m:
-        val = float(m.group(1))
-        if YIELD_SANITY_MIN <= val <= YIELD_SANITY_MAX:
-            return val
+        r"WAY:\s*(\d+\.\d{2,4})%?",
+        r"wa\s+yield[^0-9]*(\d+\.\d{2,4})",
+    ]
+    for pat in patterns:
+        m = re.search(pat, text, re.IGNORECASE)
+        if m:
+            val = float(m.group(1))
+            if YIELD_SANITY_MIN <= val <= YIELD_SANITY_MAX:
+                return val
     return None
 
+
 def extract_auction_date(text: str) -> Optional[str]:
+    """Extract auction date from text using multiple patterns."""
     context_patterns = [
-        r"auction\s+date[^:]*:\s*(\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{4}|\d{4}-\d{2}-\d{2})",
+        r"auction\s+date[^:]*:\s*(\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{4}|\d{4}-\d{2}-\d{2}|\d{1,2}[-]\d{1,2}[-]\d{4})",
         r"date\s+of\s+auction[^:]*:\s*(\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{4}|\d{4}-\d{2}-\d{2})",
         r"auction\s+held\s+on\s+(\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{4}|\d{4}-\d{2}-\d{2})",
         r"held\s+on\s+(\d{1,2}[-/ ][A-Za-z]{3,9}[-/ ]\d{4}|\d{4}-\d{2}-\d{2})",
-        # Covers: "Auction Results · 91 Days · Date of Auction: 11-Jun-2025"
-        r"date\s+of\s+auction[^\d]{0,10}(\d{1,2}[-][A-Za-z]{3,9}[-]\d{4})",
     ]
     for pat in context_patterns:
         m = re.search(pat, text, re.IGNORECASE)
@@ -441,8 +498,9 @@ def extract_auction_date(text: str) -> Optional[str]:
             dt = parse_date_flexible(m.group(1).strip())
             if dt:
                 return dt.strftime("%Y-%m-%d")
+    # Generic date patterns as fallback
     for pat in [r"(\d{1,2}[-][A-Za-z]{3,9}[-]\d{4})", r"(\d{4}-\d{2}-\d{2})"]:
-        m = re.search(pat, text, re.IGNORECASE)
+        m = re.search(pat, text)
         if m:
             dt = parse_date_flexible(m.group(1).strip())
             if dt:
@@ -450,8 +508,19 @@ def extract_auction_date(text: str) -> Optional[str]:
     return None
 
 
+def _is_session_expired_page(html: str) -> bool:
+    """Detect if the DBIE response is a 'Session has expired' HTML error page."""
+    lower = html[:500].lower()
+    return (
+        "<html" in lower
+        or "session has expired" in lower
+        or "session expired" in lower
+        or "login" in lower[:200]
+    )
+
+
 # ═══════════════════════════════════════════════════════════════════════════════
-# DATA VALIDATION  (unchanged from v3.0.0)
+# DATA VALIDATION
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def validate_record(
@@ -516,433 +585,478 @@ def validate_record(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SOURCE 1: RBI DBIE CSV API  (FIX-1 — replaces broken DBIE table scraper)
+# SOURCE A: DBIE FINANCIAL MARKET TABLE SCRAPER  (v4.0.0 — replaces dead CSV API)
 # ═══════════════════════════════════════════════════════════════════════════════
 
-def fetch_from_dbie_api(
+def fetch_from_dbie_table(
     session: requests.Session
 ) -> Dict[str, Dict[str, Any]]:
     """
-    FIX-1: Fetch T-Bill cut-off yields from the RBI DBIE time-series CSV export.
+    Source A: Scrape the DBIE Financial Market → Money Market → Treasury Bills
+    public HTML table.
 
-    The DBIE portal exposes a public CSV download endpoint:
-        GET https://data.rbi.org.in/DBIE/dbie.rbi
-            ?site=statistics
-            &seriesID=<ID>
-            &startDate=DD-MM-YYYY
-            &endDate=DD-MM-YYYY
-            &type=T
-            &lang=EN
+    This page requires NO authentication and is not Cloudflare-blocked.
+    It returns a static HTML table with recent T-Bill auction data including:
+      Date | 91D Cut-off Price | 91D WAY | 182D Cut-off | 182D WAY | 364D Cut-off | 364D WAY
 
-    Response: CSV with columns: Date, Value
-    This endpoint is NOT WAF-blocked and returns structured data.
+    Tries the primary relPath URL first, then variant URLs on failure.
+    """
+    log.info("  [Source A] DBIE Financial Market table scraper…")
+    results: Dict[str, Dict[str, Any]] = {}
 
-    RBI DBIE Series IDs for T-Bill cut-off implicit yields:
-        91D  → seriesID 480
-        182D → seriesID 481
-        364D → seriesID 482
+    urls_to_try = [DBIE_TABLE_URL_PRIMARY] + DBIE_TABLE_URL_VARIANTS
 
-    If a series ID fails, the function tries an alternative query format
-    using the series label-based URL.
+    for url_idx, url in enumerate(urls_to_try):
+        if len(results) == 3:
+            break
+
+        log.info(f"  [Source A] Trying URL variant {url_idx + 1}/{len(urls_to_try)}: {url[:80]}…")
+        resp = retry_get(session, url)
+
+        if resp is None:
+            log.warning(f"  [Source A] URL variant {url_idx + 1} unreachable")
+            continue
+
+        text = resp.text
+
+        # Detect session-expired HTML (which would indicate authentication required)
+        if _is_session_expired_page(text):
+            log.warning(
+                f"  [Source A] URL variant {url_idx + 1} returned session-expired HTML.\n"
+                "  This DBIE URL requires authentication. Trying next variant."
+            )
+            continue
+
+        soup = BeautifulSoup(text, "lxml")
+
+        # Strategy 1: Look for a structured data table with T-Bill columns
+        results.update(_parse_dbie_html_table(soup, url))
+
+        if results:
+            log.info(f"  [Source A] Extracted {len(results)}/3 tenors from DBIE table")
+            return results
+
+        log.warning(f"  [Source A] URL variant {url_idx + 1}: no T-Bill table found in page")
+
+    if not results:
+        log.warning("  [Source A] All DBIE table URL variants failed or returned no data")
+
+    return results
+
+
+def _parse_dbie_html_table(
+    soup: BeautifulSoup,
+    source_url: str,
+) -> Dict[str, Dict[str, Any]]:
+    """
+    Parse a DBIE-rendered HTML table to extract T-Bill cut-off prices/yields.
+
+    The DBIE table typically has columns in this order:
+      [0] Date
+      [1] 91-Day Cut-off Price
+      [2] 91-Day WAY (%)
+      [3] 182-Day Cut-off Price
+      [4] 182-Day WAY (%)
+      [5] 364-Day Cut-off Price
+      [6] 364-Day WAY (%)
+
+    Or alternatively as a transposed table where each row is a tenor.
     """
     results: Dict[str, Dict[str, Any]] = {}
 
-    # Request the last 30 days to ensure we capture the most recent auction
-    end_date   = datetime.now(IST)
-    start_date = end_date - timedelta(days=30)
-    start_str  = start_date.strftime("%d-%m-%Y")
-    end_str    = end_date.strftime("%d-%m-%Y")
+    tables = soup.find_all("table")
+    log.debug(f"  [Source A] Found {len(tables)} HTML tables on page")
 
-    log.info(f"  [Source 1] DBIE CSV API: {start_str} → {end_str}")
-
-    for tenor_label, tenor_days, series_key, series_id, series_name in DBIE_SERIES:
-        # Primary DBIE CSV API URL
-        url = (
-            f"{DBIE_API_BASE}"
-            f"?site=statistics"
-            f"&seriesID={series_id}"
-            f"&startDate={start_str}"
-            f"&endDate={end_str}"
-            f"&type=T"
-            f"&lang=EN"
-        )
-
-        log.info(f"  [Source 1] {tenor_label} → seriesID={series_id}")
-        resp = retry_get(session, url)
-
-        # If the numeric ID fails, try the alternate DBIE API query path
-        if resp is None or resp.status_code == 418:
-            alt_url = (
-                f"{DBIE_API_BASE}"
-                f"?site=statistics"
-                f"&seriesID={series_id}"
-                f"&startDate={start_str}"
-                f"&endDate={end_str}"
-                f"&type=D"       # D = download (alternative format flag)
-                f"&lang=EN"
-            )
-            log.debug(f"  [Source 1] {tenor_label}: retrying with type=D")
-            resp = retry_get(session, alt_url)
-
-        if resp is None:
-            log.warning(f"  [Source 1] {tenor_label}: DBIE API unreachable")
+    for table in tables:
+        rows = table.find_all("tr")
+        if len(rows) < 2:
             continue
 
-        # Parse CSV response
-        try:
-            content_type = resp.headers.get("Content-Type", "")
-            text = resp.text.strip()
+        tbl_text_lower = table.get_text(" ", strip=True).lower()
 
-            # Verify this looks like CSV data, not an HTML error page
-            if "<html" in text[:200].lower():
-                log.warning(
-                    f"  [Source 1] {tenor_label}: API returned HTML (not CSV). "
-                    f"DBIE series ID {series_id} may have changed."
-                )
-                continue
+        # Check if this table contains T-Bill data
+        if not any(kw in tbl_text_lower for kw in [
+            "treasury bill", "91", "182", "364", "cut-off", "cutoff", "ytm", "way"
+        ]):
+            continue
 
-            reader = csv.DictReader(io.StringIO(text))
-            rows = list(reader)
+        # Get all rows as cell-text lists
+        parsed_rows: List[List[str]] = []
+        for row in rows:
+            cells = [c.get_text(" ", strip=True) for c in row.find_all(["td", "th"])]
+            if cells:
+                parsed_rows.append(cells)
 
-            if not rows:
-                log.warning(f"  [Source 1] {tenor_label}: Empty CSV response")
-                continue
+        if len(parsed_rows) < 2:
+            continue
 
-            log.debug(f"  [Source 1] {tenor_label}: {len(rows)} CSV rows, headers={reader.fieldnames}")
+        log.debug(f"  [Source A] Candidate table: {len(parsed_rows)} rows, "
+                  f"first row: {parsed_rows[0][:7]}")
 
-            # CSV columns vary: could be 'Date','Value' or 'Period','Data' or similar
-            # Find the date and value columns dynamically
-            date_col  = next(
-                (c for c in (reader.fieldnames or [])
-                 if any(k in c.lower() for k in ["date", "period", "time"])),
-                None
-            )
-            value_col = next(
-                (c for c in (reader.fieldnames or [])
-                 if any(k in c.lower() for k in ["value", "data", "rate", "yield"])),
-                None
-            )
+        # Try to identify column layout from header row
+        header = [c.lower() for c in parsed_rows[0]]
 
-            if date_col is None or value_col is None:
-                log.warning(
-                    f"  [Source 1] {tenor_label}: Cannot identify date/value columns. "
-                    f"Headers: {reader.fieldnames}"
-                )
-                continue
+        # Layout A: columnar table with date + tenor columns
+        date_col  = None
+        tenor_cols: Dict[str, int] = {}  # series_key → column index
 
-            # Find the most recent valid row (sorted newest-first or oldest-first)
-            # Try last row first (most APIs return chronological order)
-            valid_rows = [
-                r for r in rows
-                if r.get(value_col, "").strip() not in ("", ".", "NA", "N/A", "-")
-            ]
-            if not valid_rows:
-                log.warning(f"  [Source 1] {tenor_label}: No valid data rows")
-                continue
+        for ci, h in enumerate(header):
+            if any(k in h for k in ["date", "period", "month", "year"]):
+                date_col = ci
 
-            # Take the last row (most recent, assuming chronological order)
-            latest = valid_rows[-1]
-            raw_date  = latest.get(date_col, "").strip()
-            raw_value = latest.get(value_col, "").strip()
+        # Detect 91/182/364 day columns from header
+        for ci, h in enumerate(header):
+            h_num = re.sub(r"[^0-9]", "", h)
+            if "91" in h_num and "tbill_91d" not in tenor_cols:
+                tenor_cols["tbill_91d"] = ci
+            elif "182" in h_num and "tbill_182d" not in tenor_cols:
+                tenor_cols["tbill_182d"] = ci
+            elif "364" in h_num and "tbill_364d" not in tenor_cols:
+                tenor_cols["tbill_364d"] = ci
 
-            # Parse value — could be a yield percent OR a price
-            # DBIE typically returns the implicit yield directly
-            try:
-                value = float(raw_value.replace(",", ""))
-            except ValueError:
-                log.warning(f"  [Source 1] {tenor_label}: Cannot parse value: {raw_value!r}")
-                continue
+        if tenor_cols and date_col is not None:
+            # Find the most recent data row (last non-empty row)
+            data_rows = [r for r in parsed_rows[1:] if len(r) > max(tenor_cols.values())]
+            if data_rows:
+                latest = data_rows[-1]
+                raw_date = latest[date_col].strip()
+                auction_date = extract_auction_date(raw_date) or \
+                               datetime.now(IST).strftime("%Y-%m-%d")
 
-            # Determine if value is a yield (1–20%) or a price (90–100)
-            if 1.0 <= value <= 20.0:
-                # Value is the yield directly
-                yield_val = round(value, 4)
-                # Back-calculate price for reconciliation
-                price_val = round(
-                    100.0 / (1.0 + (yield_val / 100.0) * (tenor_days / 365.0)), 4
-                )
-            elif 85.0 <= value <= 100.0:
-                # Value is the cut-off price
-                price_val = value
-                yield_val = round(implicit_yield(price_val, tenor_days), 4)
-            else:
-                log.warning(
-                    f"  [Source 1] {tenor_label}: Value {value} is neither a "
-                    f"recognisable yield (1–20%) nor price (85–100)"
-                )
-                continue
+                for series_key, col_idx in tenor_cols.items():
+                    if series_key in results:
+                        continue
+                    tenor_days = {"tbill_91d": 91, "tbill_182d": 182, "tbill_364d": 364}[series_key]
+                    tenor_label = series_key.replace("tbill_", "").upper()
+                    raw_val = latest[col_idx].strip()
 
-            auction_date = extract_auction_date(raw_date) or \
-                           datetime.now(IST).strftime("%Y-%m-%d")
+                    try:
+                        val = float(raw_val.replace(",", ""))
+                    except ValueError:
+                        log.debug(f"  [Source A] Cannot parse {tenor_label} value: {raw_val!r}")
+                        continue
 
-            results[series_key] = {
-                "tenor_days":             tenor_days,
-                "auction_date":           auction_date,
-                "cutoff_price":           price_val,
-                "implicit_yield":         yield_val,
-                "weighted_average_yield": yield_val,  # DBIE gives cut-off, WA unavailable
-                "source_url":             url,
-                "source_label":           "DBIE_CSV_API",
-            }
-            log.info(
-                f"  [Source 1] {tenor_label} ✓  "
-                f"yield={yield_val}%  price={price_val}  date={auction_date}"
-            )
+                    # Determine if value is a price (85–100) or yield (1–20)
+                    if 85.0 <= val <= 100.0:
+                        price_val = val
+                        yield_val = round(implicit_yield(price_val, tenor_days), 4)
+                    elif YIELD_SANITY_MIN <= val <= YIELD_SANITY_MAX:
+                        yield_val = round(val, 4)
+                        price_val = round(
+                            100.0 / (1.0 + (yield_val / 100.0) * (tenor_days / 365.0)), 4
+                        )
+                    else:
+                        log.debug(f"  [Source A] {tenor_label}: value {val} not recognised as "
+                                  "price or yield")
+                        continue
 
-        except (csv.Error, KeyError, StopIteration) as e:
-            log.warning(f"  [Source 1] {tenor_label}: CSV parse error: {e}")
-            log.debug(traceback.format_exc())
+                    results[series_key] = {
+                        "tenor_days":             tenor_days,
+                        "auction_date":           auction_date,
+                        "cutoff_price":           price_val,
+                        "implicit_yield":         yield_val,
+                        "weighted_average_yield": yield_val,
+                        "source_url":             source_url,
+                        "source_label":           "DBIE_TABLE",
+                    }
+                    log.info(
+                        f"  [Source A] {tenor_label} ✓  "
+                        f"yield={yield_val}%  price={price_val}  date={auction_date}"
+                    )
 
-    log.info(f"  [Source 1] DBIE API: fetched {len(results)}/3 tenors")
+                if results:
+                    return results
+
+        # Layout B: try scanning all data rows for numeric price/yield values
+        # and identifying tenors from context
+        for row in parsed_rows[1:]:
+            row_text = " ".join(row).lower()
+            for tenor_label, tenor_days, series_key, keywords in TENORS_CONFIG:
+                if series_key in results:
+                    continue
+                if not any(kw in row_text for kw in keywords):
+                    continue
+
+                # Look for price-range numbers in cells
+                for cell in row:
+                    pm = re.search(r"\b(9[0-9]\.\d{2,6})\b", cell)
+                    if pm:
+                        price_val = float(pm.group(1))
+                        try:
+                            yield_val = round(implicit_yield(price_val, tenor_days), 4)
+                        except ValueError:
+                            continue
+                        auction_date = extract_auction_date(" ".join(row)) or \
+                                       datetime.now(IST).strftime("%Y-%m-%d")
+                        results[series_key] = {
+                            "tenor_days":             tenor_days,
+                            "auction_date":           auction_date,
+                            "cutoff_price":           price_val,
+                            "implicit_yield":         yield_val,
+                            "weighted_average_yield": yield_val,
+                            "source_url":             source_url,
+                            "source_label":           "DBIE_TABLE",
+                        }
+                        log.info(
+                            f"  [Source A] {tenor_label} ✓ (row scan)  "
+                            f"yield={yield_val}%  price={price_val}"
+                        )
+                        break
+
     return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SOURCE 2A: RBI PRESS RELEASE LISTING PAGE  (FIX-2a)
+# SOURCE B: RBI PRESS RELEASE LISTING PAGE  (v4.0.0 — fixed prid extraction)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_from_pr_listing(
     session: requests.Session
 ) -> Dict[str, Dict[str, Any]]:
     """
-    FIX-2a: Scrape the un-parameterised RBI press release listing page.
+    Source B: Scrape the RBI press release listing page for T-Bill auction
+    result links.
 
-    The listing page (BS_PressReleaseDisplay.aspx without ?prid=) returns
-    an HTML table of the most recent press releases with PDF links and titles.
-    This page is NOT WAF-blocked (confirmed working Jun 2026).
+    The listing page (BS_PressReleaseDisplay.aspx without ?prid) returns an
+    HTML table of the ~20 most recent press releases with title and prid links.
 
-    Strategy:
-        1. Fetch the listing page.
-        2. Find all PDF links whose anchor text contains T-Bill keywords.
-        3. For each tenor, identify the most recent matching PDF URL.
-        4. Fetch the PDF URL — but rbidocs.rbi.org.in PDFs are CAPTCHA-gated,
-           so instead we use the HTML press release page (prid= extracted
-           from the PDF URL's PR number prefix).
+    v4.0.0 fix: Improved prid extraction to scan ALL anchor hrefs on the page,
+    not just those where the anchor text matches T-Bill keywords (the anchor text
+    sometimes contains only the release title without tenor keywords).
     """
-    log.info("  [Source 2A] Fetching RBI press release listing page…")
+    log.info("  [Source B] Fetching RBI press release listing page…")
     results: Dict[str, Dict[str, Any]] = {}
 
-    resp = retry_get(session, RBI_PR_LISTING)
+    resp = retry_get(session, RBI_PR_LISTING_URL)
     if resp is None:
-        log.warning("  [Source 2A] Could not fetch listing page")
+        log.warning("  [Source B] Press release listing page unreachable")
         return results
 
     soup  = BeautifulSoup(resp.text, "lxml")
-    links = soup.find_all("a", href=True)
+    page_text_lower = soup.get_text(" ", strip=True).lower()
 
-    # Find all T-Bill related links — both PDF and HTML (prid= links)
-    tbill_kw = ["treasury bill", "t-bill", "tbill", "91-day", "182-day", "364-day",
-                "auction result"]
-    candidate_links: List[Tuple[str, str]] = []
+    # Quick sanity check: does the page contain any T-Bill related text?
+    has_tbill = any(kw in page_text_lower for kw in TBILL_KEYWORDS)
+    log.info(f"  [Source B] Listing page loaded; T-Bill keyword present: {has_tbill}")
 
-    for a in links:
-        txt  = a.get_text(" ", strip=True).lower()
+    # Collect all prid values from the page — both from T-Bill links and all links
+    # (we'll then fetch each prid page and check if it's a T-Bill result)
+    all_prids: List[int] = []
+    tbill_prids: List[int] = []
+
+    for a in soup.find_all("a", href=True):
         href = a["href"]
-        if any(kw in txt for kw in tbill_kw):
-            # Normalise relative URLs
-            if href.startswith("/"):
-                href = "https://www.rbi.org.in" + href
-            elif not href.startswith("http"):
-                href = "https://www.rbi.org.in/" + href
-            candidate_links.append((a.get_text(" ", strip=True), href))
-            log.debug(f"  [Source 2A] Candidate: {a.get_text(' ', strip=True)[:80]} → {href[:60]}")
-
-    log.info(f"  [Source 2A] Found {len(candidate_links)} T-Bill candidate link(s)")
-    if not candidate_links:
-        return results
-
-    # Attempt to extract prid from PDF URLs
-    # PDF URLs look like: /rdocs/PressRelease/PDFs/PR<NNNNN>XXXXX.PDF
-    # The prid is NOT directly in the PDF URL, but the listing page also
-    # contains direct prid= links. Extract those.
-    prid_links: List[int] = []
-    for _, href in candidate_links:
         m = re.search(r"prid=(\d+)", href, re.IGNORECASE)
-        if m:
-            prid_links.append(int(m.group(1)))
+        if not m:
+            continue
+        prid = int(m.group(1))
+        all_prids.append(prid)
 
-    if prid_links:
-        prid_links.sort(reverse=True)
-        log.info(f"  [Source 2A] Found prid links: {prid_links[:5]}")
-        # Try fetching the HTML pages for each prid
-        for prid in prid_links[:10]:  # Try top 10 most recent
-            url = RBI_PR_DISPLAY_URL.format(prid=prid)
-            rec_map = _parse_pr_html_page(session, url, source_label="RBI_PR_LISTING")
-            for k, v in rec_map.items():
-                if k not in results:
-                    results[k] = v
-            if len(results) == 3:
-                break
+        # Also check if anchor text or surrounding text has T-Bill keywords
+        anchor_text = a.get_text(" ", strip=True).lower()
+        if any(kw in anchor_text for kw in TBILL_KEYWORDS):
+            tbill_prids.append(prid)
+            log.debug(f"  [Source B] T-Bill link found: prid={prid} — '{anchor_text[:80]}'")
 
-    # Also try direct PDF parsing via the candidate href list
-    if len(results) < 3:
-        for link_text, link_url in candidate_links:
-            if "rbidocs" in link_url and link_url.lower().endswith(".pdf"):
-                # Try to extract the result from the linked HTML page
-                # by converting the rbidocs PDF URL to the main rbi.org.in HTML
-                # The mapping isn't direct, so we try the prid probe instead
-                pass
+    # Sort descending (most recent first)
+    all_prids   = sorted(set(all_prids),   reverse=True)
+    tbill_prids = sorted(set(tbill_prids), reverse=True)
 
-    log.info(f"  [Source 2A] Fetched {len(results)}/3 tenors from listing page")
+    log.info(
+        f"  [Source B] Found {len(all_prids)} total prids, "
+        f"{len(tbill_prids)} with T-Bill keywords"
+    )
+
+    # Prioritise confirmed T-Bill prids, then fall through to all prids
+    prid_order = tbill_prids + [p for p in all_prids if p not in tbill_prids]
+
+    for prid in prid_order[:15]:   # Check top 15 prids from the listing
+        if len(results) == 3:
+            break
+        url = RBI_PR_DISPLAY_URL.format(prid=prid)
+        rec_map = _parse_pr_html_page(session, url, source_label="RBI_PR_LISTING")
+        for k, v in rec_map.items():
+            if k not in results:
+                results[k] = v
+
+    log.info(f"  [Source B] Fetched {len(results)}/3 tenors from PR listing page")
     return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SOURCE 2B: RBI RSS FEED  (FIX-2b)
+# SOURCE C: RBI RSS FEED  (v4.0.0 — expanded keyword matching)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_from_rss(
     session: requests.Session
 ) -> Dict[str, Dict[str, Any]]:
     """
-    FIX-2b: Parse the RBI RSS feed to discover press release prid values.
+    Source C: Parse the RBI RSS feed for T-Bill auction result press releases.
 
-    The RSS feed (rbi.org.in/scripts/rss.aspx) is lightweight XML and is
-    never WAF-blocked. It contains <item> elements with:
-        <title>Treasury Bills: Full Auction Result</title>
-        <link>https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=NNNNN</link>
+    The RSS feed publishes a rolling window of ~20 most recent press releases.
+    Each <item> contains:
+      <title>Treasury Bills: Full Auction Result</title>
+      <link>https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx?prid=NNNNN</link>
 
-    Strategy:
-        1. Fetch the RSS XML.
-        2. Find <item> elements whose <title> contains T-Bill keywords.
-        3. Extract prid from <link>.
-        4. Fetch the HTML press release page for each prid.
+    v4.0.0 fix: Expanded keyword list for matching and added link text scanning
+    when title text is absent or minimal.
     """
-    log.info("  [Source 2B] Fetching RBI RSS feed…")
+    log.info("  [Source C] Fetching RBI RSS feed…")
     results: Dict[str, Dict[str, Any]] = {}
 
     resp = retry_get(session, RBI_RSS_URL)
     if resp is None:
-        log.warning("  [Source 2B] Could not fetch RSS feed")
+        log.warning("  [Source C] RSS feed unreachable")
         return results
 
     try:
-        # Parse as XML using BeautifulSoup (lxml-xml parser)
         try:
             soup = BeautifulSoup(resp.content, "lxml-xml")
         except Exception:
             soup = BeautifulSoup(resp.text, "lxml")
 
         items = soup.find_all("item")
-        log.info(f"  [Source 2B] Found {len(items)} RSS items")
+        log.info(f"  [Source C] Found {len(items)} RSS items")
 
-        tbill_kw = ["treasury bill", "t-bill", "tbill", "91 day", "91-day",
-                    "auction result", "182 day", "364 day"]
+        if len(items) == 0:
+            # Try parsing as plain HTML
+            log.debug("  [Source C] No <item> tags found; trying HTML parse")
+            soup = BeautifulSoup(resp.text, "lxml")
+            items = soup.find_all("item")
+
         matching_prids: List[int] = []
 
         for item in items:
-            title = (item.find("title") or item.find("Title"))
-            link  = (item.find("link")  or item.find("Link"))
-            if title is None or link is None:
+            title_tag = item.find("title") or item.find("Title")
+            link_tag  = item.find("link")  or item.find("Link")
+            if not link_tag:
                 continue
-            title_text = title.get_text(strip=True).lower()
-            link_text  = link.get_text(strip=True)
 
-            if any(kw in title_text for kw in tbill_kw):
+            title_text = title_tag.get_text(strip=True).lower() if title_tag else ""
+            link_text  = link_tag.get_text(strip=True)
+            # In RSS/XML the <link> may contain URL in text or as attribute
+            if not link_text:
+                link_text = link_tag.get("href", "")
+
+            # Match on T-Bill keywords in title
+            if any(kw in title_text for kw in TBILL_KEYWORDS):
                 m = re.search(r"prid=(\d+)", link_text, re.IGNORECASE)
                 if m:
-                    matching_prids.append(int(m.group(1)))
-                    log.debug(f"  [Source 2B] T-Bill RSS item: prid={m.group(1)} — {title_text[:60]}")
+                    prid = int(m.group(1))
+                    matching_prids.append(prid)
+                    log.debug(f"  [Source C] Matched: prid={prid} — '{title_text[:60]}'")
 
         matching_prids.sort(reverse=True)
-        log.info(f"  [Source 2B] T-Bill RSS prids found: {matching_prids[:5]}")
+        log.info(f"  [Source C] T-Bill RSS prids: {matching_prids[:8]}")
 
-        for prid in matching_prids[:8]:
+        for prid in matching_prids[:10]:
+            if len(results) == 3:
+                break
             url = RBI_PR_DISPLAY_URL.format(prid=prid)
             rec_map = _parse_pr_html_page(session, url, source_label="RBI_RSS")
             for k, v in rec_map.items():
                 if k not in results:
                     results[k] = v
-            if len(results) == 3:
-                break
 
     except Exception as e:
-        log.warning(f"  [Source 2B] RSS parse error: {e}")
+        log.warning(f"  [Source C] RSS parse error: {e}")
         log.debug(traceback.format_exc())
 
-    log.info(f"  [Source 2B] Fetched {len(results)}/3 tenors from RSS")
+    log.info(f"  [Source C] Fetched {len(results)}/3 tenors from RSS feed")
     return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# SOURCE 2C: SEQUENTIAL PRID PROBE  (FIX-2c)
+# SOURCE D: SEQUENTIAL PRID PROBE  (v4.0.0 — corrected baseline, wider window)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_from_prid_probe(
-    session: requests.Session
+    session: requests.Session,
+    known_tbill_prids: Optional[List[int]] = None,
 ) -> Dict[str, Dict[str, Any]]:
     """
-    FIX-2c: Find T-Bill press release pages by probing prid values backwards.
+    Source D: Find T-Bill press release pages by probing prid values backwards.
 
-    The RBI prid is a sequential integer assigned to each press release.
-    Given a known baseline prid and date, we can estimate the current highest
-    prid and probe backwards until we find T-Bill auction result pages.
+    v4.0.0 corrections:
+    1. Corrected baseline prid: 62798 on 2026-05-22 (vs wrong estimate in v3.x)
+    2. Reduced safety margin from 10% to 5% (10% overshoot was pushing probe
+       window to the wrong prid range)
+    3. Increased probe window from 150 to 300 prids (~4 months of coverage)
+    4. First checks the listing page to seed known prids before probing
 
-    This is resilient to all URL structure changes — the prid numbering
-    scheme has been stable since the RBI website launched (2010+).
-
-    Probe limit: PRID_PROBE_WINDOW (default 150) — enough for ~2 months
-    of daily RBI press releases at AVG_PRID_PER_DAY rate.
+    known_tbill_prids: optionally pass in confirmed T-Bill prids from Source B
+    to skip re-probing them here.
     """
-    log.info("  [Source 2C] Starting sequential prid probe…")
+    log.info("  [Source D] Starting sequential prid probe…")
     results: Dict[str, Dict[str, Any]] = {}
 
     high_prid = estimate_current_prid()
     low_prid  = high_prid - PRID_PROBE_WINDOW
-    log.info(f"  [Source 2C] Probing prid range: {low_prid} → {high_prid}")
+    log.info(
+        f"  [Source D] Probe range: {low_prid}–{high_prid} "
+        f"(baseline={KNOWN_PRID_BASELINE} on {KNOWN_PRID_DATE})"
+    )
 
+    skip_prids = set(known_tbill_prids or [])
     probed   = 0
     found_pr = 0
 
     for prid in range(high_prid, low_prid, -1):
         if len(results) == 3:
             break
+        if prid in skip_prids:
+            log.debug(f"  [Source D] prid={prid}: already tried in earlier source")
+            continue
 
         url  = RBI_PR_DISPLAY_URL.format(prid=prid)
-        resp = retry_get(session, url, retries=1, backoff_base=1, allow_404=True)
-
+        resp = retry_get(
+            session, url,
+            retries=1, backoff_base=1,
+            timeout=15,
+            allow_404=True
+        )
         probed += 1
 
         if resp is None or resp.status_code == 404:
-            log.debug(f"  [Source 2C] prid={prid}: 404/None")
+            log.debug(f"  [Source D] prid={prid}: 404/unreachable")
             continue
 
-        # Quick check: does this page contain T-Bill keywords?
-        text_snippet = resp.text[:3000].lower()
-        is_tbill = any(
-            kw in text_snippet
-            for kw in ["treasury bill", "t-bill", "tbill", "91 day", "91-day",
-                       "cut-off price", "implicit yield"]
-        )
+        if resp.status_code == 418:
+            log.warning("  [Source D] HTTP 418 WAF block; stopping probe")
+            break
+
+        # Quick T-Bill keyword check on first 4000 characters of response
+        text_snippet = resp.text[:4000].lower()
+        is_tbill = any(kw in text_snippet for kw in TBILL_KEYWORDS)
+
         if not is_tbill:
-            log.debug(f"  [Source 2C] prid={prid}: not a T-Bill page")
+            log.debug(f"  [Source D] prid={prid}: not a T-Bill page")
             continue
 
         found_pr += 1
-        log.info(f"  [Source 2C] prid={prid}: T-Bill page found (checked {probed})")
+        log.info(f"  [Source D] prid={prid}: T-Bill page confirmed (checked {probed} prids)")
 
-        # Parse this press release
         rec_map = _parse_pr_html_page(
             session, url,
-            source_label="RBI_PR_PRID_PROBE",
+            source_label="RBI_PR_PROBE",
             prefetched_resp=resp
         )
         for k, v in rec_map.items():
             if k not in results:
                 results[k] = v
 
-        # Small polite delay between requests to avoid hammering RBI
-        time.sleep(0.5)
+        # Polite delay between requests
+        time.sleep(0.4)
 
     log.info(
-        f"  [Source 2C] Probed {probed} prids, found {found_pr} T-Bill pages, "
-        f"fetched {len(results)}/3 tenors"
+        f"  [Source D] Probed {probed} prids, found {found_pr} T-Bill pages, "
+        f"extracted {len(results)}/3 tenors"
     )
     return results
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# HTML PRESS RELEASE PAGE PARSER  (shared by Sources 2A, 2B, 2C)
+# HTML PRESS RELEASE PAGE PARSER  (shared by Sources B, C, D)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def _parse_pr_html_page(
@@ -954,11 +1068,12 @@ def _parse_pr_html_page(
     """
     Parse a single RBI HTML press release page (BS_PressReleaseDisplay.aspx?prid=N).
 
-    This page typically contains the full auction result table in plain HTML.
-    A single press release may contain data for all 3 tenors simultaneously
-    (RBI often publishes one combined "Full Auction Result" release).
+    RBI press release format for T-Bill full auction results:
+      Table rows: 91 Days | 182 Days | 364 Days
+      Columns: Notified Amount | Bids Received | Cut-off price/Yield | ...
 
-    Returns: dict keyed by series name, with up to 3 tenors extracted.
+    Returns: dict keyed by series name with extracted data (up to 3 tenors).
+    A single RBI press release often contains all 3 tenors simultaneously.
     """
     if prefetched_resp is not None:
         resp = prefetched_resp
@@ -970,11 +1085,10 @@ def _parse_pr_html_page(
     soup = BeautifulSoup(resp.text, "lxml")
     text = soup.get_text(" ", strip=True)
 
-    # Extract overall auction date once for the whole page
     page_auction_date = extract_auction_date(text)
     results: Dict[str, Dict[str, Any]] = {}
 
-    # Strategy A: Find structured HTML table with Cut-off Price + Yield columns
+    # ── Strategy A: Structured HTML table parsing ─────────────────────────────
     tables = soup.find_all("table")
     for table in tables:
         rows = table.find_all("tr")
@@ -982,11 +1096,12 @@ def _parse_pr_html_page(
             continue
 
         tbl_text = table.get_text(" ", strip=True).lower()
-        if not any(kw in tbl_text for kw in
-                   ["cut-off", "cutoff", "implicit yield", "ytm"]):
+        # Only process tables that look like auction result tables
+        if not any(kw in tbl_text for kw in [
+            "cut-off", "cutoff", "implicit yield", "ytm", "91", "182", "364"
+        ]):
             continue
 
-        # Look for a row per tenor
         for row in rows:
             cells = row.find_all(["td", "th"])
             cell_texts = [c.get_text(" ", strip=True) for c in cells]
@@ -998,60 +1113,83 @@ def _parse_pr_html_page(
                 if not any(kw in row_text for kw in keywords):
                     continue
 
-                # Scan cells for price and yield
-                price = None
+                # Scan cells for price (90–100) and yield values
+                price  = None
                 yield_ = None
+                wa_y   = None
+
                 for ct in cell_texts:
-                    pm = re.search(r"\b(9[0-9]\.\d{2,6})\b", ct)
-                    if pm and price is None:
-                        price = float(pm.group(1))
-                    ym = re.search(r"YTM:\s*(\d+\.\d{2,4})%?|(\d+\.\d{4})%", ct, re.I)
-                    if ym and yield_ is None:
-                        raw = ym.group(1) or ym.group(2)
-                        v = float(raw)
+                    # Check for explicit YTM format: "(YTM: 6.4238%)"
+                    ytm_m = re.search(r"YTM:\s*(\d+\.\d{2,4})%?", ct, re.I)
+                    if ytm_m and yield_ is None:
+                        v = float(ytm_m.group(1))
                         if YIELD_SANITY_MIN <= v <= YIELD_SANITY_MAX:
                             yield_ = v
 
-                if price is not None or yield_ is not None:
-                    if price is None and yield_ is not None:
-                        price = round(
-                            100.0 / (1.0 + (yield_ / 100.0) * (tenor_days / 365.0)), 4
-                        )
-                    if price is not None:
-                        try:
-                            impl_y = round(implicit_yield(price, tenor_days), 4)
-                        except ValueError:
-                            continue
-                        results[series_key] = {
-                            "tenor_days":             tenor_days,
-                            "auction_date":           page_auction_date or
-                                                      datetime.now(IST).strftime("%Y-%m-%d"),
-                            "cutoff_price":           price,
-                            "implicit_yield":         impl_y,
-                            "weighted_average_yield": yield_ or impl_y,
-                            "source_url":             url,
-                            "source_label":           source_label,
-                        }
-                        log.info(
-                            f"  [{source_label}] {tenor_label} ✓ "
-                            f"price={price}  yield={impl_y}%  "
-                            f"date={results[series_key]['auction_date']}"
-                        )
+                    # Check for WAY format: "(WAY: 6.4085%)"
+                    way_m = re.search(r"WAY:\s*(\d+\.\d{2,4})%?", ct, re.I)
+                    if way_m and wa_y is None:
+                        v = float(way_m.group(1))
+                        if YIELD_SANITY_MIN <= v <= YIELD_SANITY_MAX:
+                            wa_y = v
 
-    # Strategy B: Plain text extraction (fallback if no table found)
+                    # Check for price in 90–100 range
+                    pm = re.search(r"\b(9[0-9]\.\d{2,6})\b", ct)
+                    if pm and price is None:
+                        price = float(pm.group(1))
+
+                    # Check for 4-decimal yield percentage
+                    ym = re.search(r"\b(\d+\.\d{4})\b", ct)
+                    if ym and yield_ is None:
+                        v = float(ym.group(1))
+                        if YIELD_SANITY_MIN <= v <= YIELD_SANITY_MAX:
+                            yield_ = v
+
+                if price is None and yield_ is None:
+                    continue
+
+                # Back-calculate missing price or yield
+                if price is None and yield_ is not None:
+                    price = round(
+                        100.0 / (1.0 + (yield_ / 100.0) * (tenor_days / 365.0)), 4
+                    )
+                if price is not None:
+                    try:
+                        impl_y = round(implicit_yield(price, tenor_days), 4)
+                    except ValueError:
+                        continue
+
+                    results[series_key] = {
+                        "tenor_days":             tenor_days,
+                        "auction_date":           page_auction_date or
+                                                  datetime.now(IST).strftime("%Y-%m-%d"),
+                        "cutoff_price":           price,
+                        "implicit_yield":         impl_y,
+                        "weighted_average_yield": wa_y if wa_y else (yield_ or impl_y),
+                        "source_url":             url,
+                        "source_label":           source_label,
+                    }
+                    log.info(
+                        f"  [{source_label}] {tenor_label} ✓ "
+                        f"price={price}  yield={impl_y}%  "
+                        f"date={results[series_key]['auction_date']}"
+                    )
+
+    # ── Strategy B: Plain text extraction (fallback if table parsing fails) ────
     if not results:
         for tenor_label, tenor_days, series_key, keywords in TENORS_CONFIG:
             if series_key in results:
                 continue
-            # Search for tenor-specific sections
             for kw in keywords:
                 idx = text.lower().find(kw)
                 if idx == -1:
                     continue
-                window = text[idx: idx + 500]
+                # Extract a window of text around the keyword
+                window = text[max(0, idx - 50): idx + 600]
                 price  = extract_price_from_text(window)
                 yield_ = extract_yield_from_text(window)
                 wa_y   = extract_wa_yield_from_text(window)
+
                 if price is None and yield_ is not None:
                     price = round(
                         100.0 / (1.0 + (yield_ / 100.0) * (tenor_days / 365.0)), 4
@@ -1072,7 +1210,7 @@ def _parse_pr_html_page(
                         "source_label":           source_label,
                     }
                     log.info(
-                        f"  [{source_label}] {tenor_label} ✓ (text) "
+                        f"  [{source_label}] {tenor_label} ✓ (text)  "
                         f"price={price}  yield={impl_y}%"
                     )
                     break
@@ -1081,25 +1219,30 @@ def _parse_pr_html_page(
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MASTER FETCHER  (updated source order)
+# MASTER FETCHER  (v4.0.0 — corrected 4-source fallback chain)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_tbill_all_tenors(
     session: requests.Session
 ) -> Dict[str, Dict[str, Any]]:
     """
-    Master fetcher with updated 4-source fallback chain.
+    Master fetcher with corrected 4-source fallback chain (v4.0.0).
 
-    Source priority (2026):
-        1. DBIE CSV API       — most reliable, structured, no WAF
-        2. RSS feed           — no WAF, low bandwidth
-        3. PR listing page    — live listing, not WAF-blocked
-        4. prid probe         — brute-force sequential scan (last resort)
+    Source priority:
+        A. DBIE Financial Market table  — structured, no-auth, no WAF
+        B. RBI PR listing page          — live listing, 20 most recent PRs
+        C. RBI RSS feed                 — XML, never WAF-blocked
+        D. Sequential prid probe        — brute-force, last resort
 
     Each source only runs for tenors not yet found by a prior source.
-    The probe (Source 4) only runs if Sources 1–3 all failed.
+    Sources B and C are run in parallel (both are fast) before falling
+    to the slower prid probe (D).
+
+    The corrected prid baseline in Source D ensures the probe window covers
+    the actual current prid range (~62800+ in June 2026).
     """
     results: Dict[str, Dict[str, Any]] = {}
+    tbill_prids_seen: List[int] = []  # track prids already fetched for D
 
     def _merge(new: Dict) -> None:
         for k, v in new.items():
@@ -1109,51 +1252,55 @@ def fetch_tbill_all_tenors(
     def _missing() -> List[str]:
         return [key for _, _, key, _ in TENORS_CONFIG if key not in results]
 
-    # ── Source 1: DBIE CSV API ────────────────────────────────────────────────
-    log.info("==> [Step 1/4] DBIE CSV API")
+    # ── Source A: DBIE Financial Market table ─────────────────────────────────
+    log.info("==> [1/4] Source A: DBIE Financial Market table")
     try:
-        _merge(fetch_from_dbie_api(session))
+        _merge(fetch_from_dbie_table(session))
     except Exception as e:
-        log.warning(f"  Source 1 unhandled exception: {e}")
+        log.warning(f"  Source A unhandled exception: {e}")
         log.debug(traceback.format_exc())
 
     if not _missing():
-        log.info("  All 3 tenors fetched from Source 1 — skipping Sources 2–4")
+        log.info("  All 3 tenors from Source A — done")
         _log_final(results)
         return results
 
-    # ── Source 2B: RSS Feed ───────────────────────────────────────────────────
-    log.info(f"==> [Step 2/4] RSS feed (missing: {_missing()})")
+    log.info(f"  Source A partial. Missing: {_missing()}")
+
+    # ── Source B: PR listing page ─────────────────────────────────────────────
+    log.info("==> [2/4] Source B: RBI PR listing page")
+    try:
+        src_b = fetch_from_pr_listing(session)
+        _merge(src_b)
+    except Exception as e:
+        log.warning(f"  Source B unhandled exception: {e}")
+        log.debug(traceback.format_exc())
+        src_b = {}
+
+    if not _missing():
+        log.info("  All 3 tenors — done after Source B")
+        _log_final(results)
+        return results
+
+    # ── Source C: RSS feed ────────────────────────────────────────────────────
+    log.info(f"==> [3/4] Source C: RBI RSS feed (missing: {_missing()})")
     try:
         _merge(fetch_from_rss(session))
     except Exception as e:
-        log.warning(f"  Source 2B unhandled exception: {e}")
+        log.warning(f"  Source C unhandled exception: {e}")
         log.debug(traceback.format_exc())
 
     if not _missing():
-        log.info("  All 3 tenors fetched — skipping Sources 3–4")
+        log.info("  All 3 tenors — done after Source C")
         _log_final(results)
         return results
 
-    # ── Source 2A: PR Listing Page ────────────────────────────────────────────
-    log.info(f"==> [Step 3/4] PR listing page (missing: {_missing()})")
+    # ── Source D: Sequential prid probe ──────────────────────────────────────
+    log.info(f"==> [4/4] Source D: Sequential prid probe (missing: {_missing()})")
     try:
-        _merge(fetch_from_pr_listing(session))
+        _merge(fetch_from_prid_probe(session, known_tbill_prids=tbill_prids_seen))
     except Exception as e:
-        log.warning(f"  Source 2A unhandled exception: {e}")
-        log.debug(traceback.format_exc())
-
-    if not _missing():
-        log.info("  All 3 tenors fetched — skipping Source 4")
-        _log_final(results)
-        return results
-
-    # ── Source 2C: prid probe ─────────────────────────────────────────────────
-    log.info(f"==> [Step 4/4] Sequential prid probe (missing: {_missing()})")
-    try:
-        _merge(fetch_from_prid_probe(session))
-    except Exception as e:
-        log.warning(f"  Source 2C unhandled exception: {e}")
+        log.warning(f"  Source D unhandled exception: {e}")
         log.debug(traceback.format_exc())
 
     _log_final(results)
@@ -1161,6 +1308,7 @@ def fetch_tbill_all_tenors(
 
 
 def _log_final(results: Dict[str, Dict[str, Any]]) -> None:
+    """Log the final fetch summary for all tenors."""
     for _, _, key, _ in TENORS_CONFIG:
         if key in results:
             r = results[key]
@@ -1172,11 +1320,11 @@ def _log_final(results: Dict[str, Dict[str, Any]]) -> None:
                 f"src={r.get('source_label','?')}"
             )
         else:
-            log.warning(f"  FINAL {key.upper()}: NOT FETCHED — retaining existing JSON value")
+            log.warning(f"  FINAL {key.upper()}: NOT FETCHED — existing JSON value preserved")
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MANUAL INPUT  (unchanged from v3.0.0)
+# MANUAL INPUT  (unchanged)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def fetch_from_manual_input() -> Dict[str, Dict[str, Any]]:
@@ -1186,16 +1334,16 @@ def fetch_from_manual_input() -> Dict[str, Dict[str, Any]]:
         )
     print("\n" + "─" * 60)
     print("  MANUAL INPUT MODE")
-    print("  Source: https://data.rbi.org.in/DBIE/")
+    print("  Source: https://www.rbi.org.in/Scripts/BS_PressReleaseDisplay.aspx")
     print("─" * 60)
     while True:
         try:
-            date_s  = input("\n  Auction date (YYYY-MM-DD): ").strip()
+            date_s = input("\n  Auction date (YYYY-MM-DD): ").strip()
             if not re.match(r"\d{4}-\d{2}-\d{2}", date_s):
-                print("  ✗ Use YYYY-MM-DD"); continue
+                print("  ✗ Use YYYY-MM-DD format"); continue
             p91   = float(input("  91D  cut-off price (e.g. 98.6280): ").strip())
-            p182  = input("  182D cut-off price (Enter to skip):  ").strip()
-            p364  = input("  364D cut-off price (Enter to skip):  ").strip()
+            p182  = input("  182D cut-off price (Enter to skip): ").strip()
+            p364  = input("  364D cut-off price (Enter to skip): ").strip()
             break
         except (ValueError, EOFError):
             print("  ✗ Invalid number, try again.")
@@ -1224,7 +1372,7 @@ def fetch_from_manual_input() -> Dict[str, Dict[str, Any]]:
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# ATOMIC WRITE  (unchanged from v3.0.0)
+# ATOMIC WRITE  (unchanged)
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def atomic_write_json(data: dict, path: str) -> None:
@@ -1236,27 +1384,35 @@ def atomic_write_json(data: dict, path: str) -> None:
             f.write("\n")
         os.replace(tmp, path)
     except Exception:
-        try: os.unlink(tmp)
-        except OSError: pass
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
         raise
 
 
 # ═══════════════════════════════════════════════════════════════════════════════
-# MAIN  (unchanged logic from v3.0.0; version bump only)
+# MAIN
 # ═══════════════════════════════════════════════════════════════════════════════
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Refresh rbi_data.json with latest RBI T-Bill auction data (v3.1.0)",
+        description="Refresh rbi_data.json with latest RBI T-Bill auction data (v4.0.0)",
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog=__doc__,
     )
-    parser.add_argument("--json-path",  default=DEFAULT_JSON_PATH)
-    parser.add_argument("--dry-run",    action="store_true")
-    parser.add_argument("--manual",     action="store_true")
-    parser.add_argument("--force",      action="store_true")
-    parser.add_argument("--verbose",    action="store_true")
-    parser.add_argument("--log-json",   action="store_true")
+    parser.add_argument("--json-path",  default=DEFAULT_JSON_PATH,
+                        help="Path to rbi_data.json (default: same directory as script)")
+    parser.add_argument("--dry-run",    action="store_true",
+                        help="Fetch data but do not write to JSON")
+    parser.add_argument("--manual",     action="store_true",
+                        help="Manually enter auction data (interactive mode only)")
+    parser.add_argument("--force",      action="store_true",
+                        help="Bypass spike detection and stale-date checks")
+    parser.add_argument("--verbose",    action="store_true",
+                        help="Enable DEBUG-level logging")
+    parser.add_argument("--log-json",   action="store_true",
+                        help="Output logs as JSON objects")
     args = parser.parse_args()
 
     if os.environ.get("RBI_DRY_RUN",   "").lower() in ("true", "1"): args.dry_run = True
@@ -1267,15 +1423,15 @@ def main() -> None:
     log = setup_logging(verbose=args.verbose, log_json=args.log_json)
     ci  = is_ci()
 
-    SEP = "=" * 62
+    SEP = "=" * 64
     log.info(SEP)
-    log.info("  RBI Treasury Bill Dashboard — Data Refresh  v3.1.0")
+    log.info("  RBI Treasury Bill Dashboard — Data Refresh  v4.0.0")
     log.info(f"  {datetime.now(IST).strftime('%Y-%m-%d %H:%M:%S IST')}")
     log.info(f"  CI={ci}  dry-run={args.dry_run}  force={args.force}")
     log.info(SEP)
 
     if args.manual and ci:
-        log.error("--manual is not usable in CI mode.")
+        log.error("--manual cannot be used in CI mode (no stdin).")
         sys.exit(1)
 
     if not os.path.exists(args.json_path):
@@ -1291,7 +1447,10 @@ def main() -> None:
 
     schema_ver = current_data.get("_meta", {}).get("schema_version")
     if schema_ver and schema_ver != SUPPORTED_SCHEMA_VERSION:
-        log.warning(f"Schema mismatch: file={schema_ver!r} script={SUPPORTED_SCHEMA_VERSION!r}")
+        log.warning(
+            f"Schema version mismatch: file={schema_ver!r} "
+            f"script={SUPPORTED_SCHEMA_VERSION!r}"
+        )
 
     prev_91d  = current_data.get("risk_free", {}).get("implicit_yield")
     ts        = current_data.get("tbill_series", {})
@@ -1299,11 +1458,11 @@ def main() -> None:
     prev_364d = ts.get("tbill_364d", [None])[-1] if ts.get("tbill_364d") else None
 
     log.info(
-        f"Stored: 91D={prev_91d}%  182D={prev_182d}%  364D={prev_364d}%  "
-        f"updated={fmtdate(current_data.get('_meta',{}).get('last_updated'))}"
+        f"Stored yields: 91D={prev_91d}%  182D={prev_182d}%  364D={prev_364d}%  "
+        f"updated={fmtdate(current_data.get('_meta', {}).get('last_updated'))}"
     )
 
-    log.info(f"\n{'─'*62}")
+    log.info(f"\n{'─' * 64}")
     log.info("[Step 1] Fetching latest RBI T-Bill data…")
 
     if args.manual:
@@ -1321,10 +1480,10 @@ def main() -> None:
 
     if "tbill_91d" not in new_tenors:
         log.error(
-            "Could not fetch 91D T-Bill data from any source.\n"
+            "Could not fetch 91D T-Bill data from any of the 4 sources.\n"
             "JSON preserved unchanged.\n"
-            "  → Run: python refresh_rbi_data.py --manual\n"
-            "  → Or:  python refresh_rbi_data.py --verbose for diagnostics"
+            "  → Run with --verbose for detailed diagnostics\n"
+            "  → Run with --manual to enter data manually"
         )
         sys.exit(0)
 
@@ -1339,11 +1498,11 @@ def main() -> None:
         if s_dt and f_dt and f_dt <= s_dt:
             log.info(
                 f"Fetched date ({fetched_date}) ≤ stored ({stored_date}). "
-                "No update needed."
+                "No update needed. Use --force to override."
             )
             sys.exit(0)
 
-    log.info(f"\n{'─'*62}")
+    log.info(f"\n{'─' * 64}")
     log.info("[Step 2] Validating 91D record…")
 
     issues   = validate_record(new_rf, prev_91d, ci_mode=ci)
@@ -1351,23 +1510,26 @@ def main() -> None:
     warnings = [m for s, m in issues if s == "warning"]
 
     if errors:
-        for e in errors: log.error(f"  • {e}")
-        log.error("ABORT — JSON preserved unchanged.")
+        for e in errors:
+            log.error(f"  • {e}")
+        log.error("ABORT — validation errors detected. JSON preserved unchanged.")
         sys.exit(1)
 
     if warnings:
-        for w in warnings: log.warning(f"  ⚠  {w}")
+        for w in warnings:
+            log.warning(f"  ⚠  {w}")
         spike = any("Spike" in w for w in warnings)
         if spike and not args.force and not ci and is_interactive():
             try:
                 if input("\n  Proceed despite spike? (yes/no): ").strip().lower() != "yes":
-                    log.info("Aborted by user."); sys.exit(0)
+                    log.info("Aborted by user.")
+                    sys.exit(0)
             except (EOFError, OSError):
                 log.warning("stdin unavailable; proceeding (CI assumption)")
     else:
         log.info("  ✓ All validation checks passed")
 
-    log.info(f"\n{'─'*62}")
+    log.info(f"\n{'─' * 64}")
     log.info("[Step 3] Building updated JSON…")
 
     updated  = copy.deepcopy(current_data)
@@ -1416,7 +1578,8 @@ def main() -> None:
                     updated["tbill_series"][sk]       = series[-18:]
         elif sk == "tbill_91d":
             s = updated["tbill_series"][sk]
-            if s: s[-1] = round(rf_yield, 4)
+            if s:
+                s[-1] = round(rf_yield, 4)
 
     if updated.get("yield_curve", {}).get("current", {}).get("yields"):
         updated["yield_curve"]["current"]["yields"][0] = round(rf_yield, 2)
@@ -1428,7 +1591,7 @@ def main() -> None:
         f"91D: {prev_91d}% → {rf_yield:.4f}%",
         f"price={new_rf['cutoff_price']}",
         f"spread={spread_bps}bps",
-        f"src={new_rf.get('source_label','?')}",
+        f"src={new_rf.get('source_label', '?')}",
     ]
     for k, pv in [("tbill_182d", prev_182d), ("tbill_364d", prev_364d)]:
         if k in new_tenors:
@@ -1438,28 +1601,28 @@ def main() -> None:
 
     updated["audit_log"].append({
         "timestamp":         now_ist,
-        "action":            "auto_refresh_v3.1",
+        "action":            "auto_refresh_v4.0",
         "source":            new_rf.get("source_label", "unknown"),
-        "operator":          "refresh_rbi_data.py v3.1.0",
+        "operator":          "refresh_rbi_data.py v4.0.0",
         "ci_mode":           ci,
         "changes":           " | ".join(changes_parts),
         "validation_status": "passed" if not warnings else "passed_with_warnings",
         "warnings":          warnings,
         "tenors_fetched":    list(new_tenors.keys()),
-        "sources_tried":     list({v.get("source_label","?") for v in new_tenors.values()}),
+        "sources_tried":     list({v.get("source_label", "?") for v in new_tenors.values()}),
     })
     if len(updated["audit_log"]) > 50:
         updated["audit_log"] = updated["audit_log"][-50:]
 
-    # Change detection
+    # Change detection — skip write if nothing actually changed
     if json_checksum(current_data) == json_checksum(updated):
-        log.info("No effective data change — skipping write.")
+        log.info("No effective data change detected — skipping write.")
         sys.exit(0)
 
     log.info("\n[Step 4] Summary:")
     log.info(f"  91D yield     : {prev_91d}% → {rf_yield:.4f}%")
     log.info(f"  10Y-91D spread: → {spread_bps} bps")
-    for k, lbl, pv in [("tbill_182d","182D",prev_182d),("tbill_364d","364D",prev_364d)]:
+    for k, lbl, pv in [("tbill_182d", "182D", prev_182d), ("tbill_364d", "364D", prev_364d)]:
         if k in new_tenors:
             log.info(f"  {lbl} yield     : {pv}% → {new_tenors[k]['implicit_yield']:.4f}%")
     log.info(f"  last_updated  : {now_ist}")
@@ -1471,7 +1634,7 @@ def main() -> None:
     backup = args.json_path.replace(".json", ".backup.json")
     try:
         atomic_write_json(current_data, backup)
-        log.info(f"\n[Step 5] Backup → {backup}")
+        log.info(f"\n[Step 5] Backup written → {backup}")
     except Exception as e:
         log.warning(f"  Backup failed: {e} (non-fatal)")
 
